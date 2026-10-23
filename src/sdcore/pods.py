@@ -4,6 +4,7 @@
 # stored constant. This is the ONE place that math happens; everything that
 # sizes a job calls in here instead of doing its own division.
 from __future__ import annotations
+
 from dataclasses import dataclass
 
 from sdcore.slurmparse import NodeStats

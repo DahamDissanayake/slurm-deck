@@ -1,8 +1,14 @@
 """Pure pod-sizing math: cpu/mem/VRAM per pod, derived live from NodeStats,
 never from a hardcoded constant."""
-from sdcore.pods import (PodSize, estimated_vram_gb, fits_new_pod_count,
-                          pod_count, pod_count_known, pod_resources,
-                          resources_for)
+from sdcore.pods import (
+    PodSize,
+    estimated_vram_gb,
+    fits_new_pod_count,
+    pod_count,
+    pod_count_known,
+    pod_resources,
+    resources_for,
+)
 from sdcore.slurmparse import NodeStats
 
 
