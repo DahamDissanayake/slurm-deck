@@ -424,7 +424,7 @@ def send_jupyter_extended(
     job_id: str,
     job_name: str,
     new_time_limit: str,
-    extra_hours: int = 2,
+    extra_hours: int = 1,
 ) -> tuple[bool, str]:
     """Confirmation email after a JupyterLab session is extended."""
     subject = f"[{_cluster_name()}] JupyterLab session extended +{extra_hours}h — job #{job_id}"

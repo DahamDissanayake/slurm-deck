@@ -360,3 +360,39 @@ def test_extend_job_time_demo_mode(monkeypatch):
     ok, msg = extend_job_time("7", 3)
     assert ok
     assert "demo" in msg
+
+
+def test_extend_job_time_admin_uses_sudo(monkeypatch):
+    """admin=True must route through `sudo -n scontrol update`, not the
+    caller's own unprivileged identity -- SLURM only lets root/operator
+    increase a TimeLimit, so the plain (non-admin) path always gets denied."""
+    from unittest.mock import patch, MagicMock
+    monkeypatch.setenv("DEMO_MODE", "0")
+    captured = []
+    def fake_run(cmd, **kw):
+        captured.append(cmd)
+        r = MagicMock(); r.returncode = 0; r.stderr = ""
+        return r
+    with patch("subprocess.run", fake_run):
+        from slurmdeck.slurm import extend_job_time
+        ok, msg = extend_job_time("42", extra_hours=1, admin=True)
+    assert ok
+    full_cmd = " ".join(captured[0])
+    assert full_cmd.startswith("sudo -n scontrol update")
+    assert "TimeLimit=+01:00:00" in full_cmd
+
+
+def test_extend_job_time_non_admin_does_not_use_sudo(monkeypatch):
+    """Without admin=True, extend_job_time must NOT prepend sudo -- only an
+    explicitly admin-gated caller may run it as root."""
+    from unittest.mock import patch, MagicMock
+    monkeypatch.setenv("DEMO_MODE", "0")
+    captured = []
+    def fake_run(cmd, **kw):
+        captured.append(cmd)
+        r = MagicMock(); r.returncode = 0; r.stderr = ""
+        return r
+    with patch("subprocess.run", fake_run):
+        from slurmdeck.slurm import extend_job_time
+        extend_job_time("42", extra_hours=1)
+    assert "sudo" not in captured[0]

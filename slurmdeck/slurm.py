@@ -567,16 +567,28 @@ def cancel(job_id: str) -> tuple[bool, str]:
         return False, str(exc)
 
 
-def extend_job_time(job_id: str, extra_hours: int = 2) -> tuple[bool, str]:
-    """Extend a running job's time limit by extra_hours (calls scontrol update)."""
+def extend_job_time(job_id: str, extra_hours: int = 1, admin: bool = False) -> tuple[bool, str]:
+    """Extend a running job's time limit by extra_hours (calls scontrol update).
+
+    SLURM only lets root/operator INCREASE a job's TimeLimit -- run as the
+    caller's own unprivileged identity this always fails Access/permission
+    denied, even for the job's own owner. admin=True routes the call through
+    `sudo -n scontrol update` instead, which the RPC then presents to
+    slurmctld as root (always authorized) via the NOPASSWD grant in
+    deploy/sudoers-gateway-admin (%gpuadmins ALL=(root) ... scontrol update *).
+    Callers must gate who is allowed to pass admin=True -- this function does
+    not check group membership itself.
+    """
     if _demo_mode():
         return True, f"Job {job_id} extended by {extra_hours}h (demo)"
-    cmd = _gateway_prefix() + [
+    prefix = ["sudo", "-n"] if admin else _gateway_prefix()
+    cmd = prefix + [
         "scontrol", "update", f"JobId={job_id}",
         f"TimeLimit=+{extra_hours:02d}:00:00",
     ]
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=10,
+                            stdin=subprocess.DEVNULL)
         if r.returncode == 0:
             return True, f"Job {job_id} extended by {extra_hours}h"
         return False, r.stderr.strip() or "scontrol update failed"

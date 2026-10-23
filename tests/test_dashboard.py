@@ -288,35 +288,56 @@ def test_jobs_table_shows_infinity_for_no_limit_job():
     assert "∞" in rendered
 
 
-def test_build_layout_extend_hint_shown_for_jupyter():
-    """Footer must show E=+2h when an own running JupyterLab job is selected."""
+def test_build_layout_extend_hint_shown_for_admin_on_jupyter():
+    """Footer must show E=+1h for an admin viewing a running JupyterLab job."""
     import re as _re
     from slurmdeck.slurm import QueueEntry
     from slurmdeck.dashboard import _build_layout
     from rich.console import Console
     j = QueueEntry("7", "lab-session", "RUNNING", "gpu", "0:10:00", 1,
                    user="alice", time_limit="2:00:00")
-    layout = _build_layout([j], 0, [], None, None, current_user="alice", is_jupyter=True)
+    layout = _build_layout([j], 0, [], None, None, current_user="alice",
+                            is_jupyter=True, is_admin=True)
     con = Console(force_terminal=True, width=120)
     with con.capture() as cap:
         con.print(layout)
     plain = _re.sub(r"\x1b\[[0-9;]*m", "", cap.get())
-    assert "E=+2h" in plain
+    assert "E=+1h" in plain
 
 
 def test_build_layout_extend_hint_hidden_for_non_jupyter():
-    """Footer must NOT show E=+2h for a regular (non-JupyterLab) job."""
+    """Footer must NOT show the extend hint for a regular (non-JupyterLab) job, even for an admin."""
     from slurmdeck.slurm import QueueEntry
     from slurmdeck.dashboard import _build_layout
     from rich.console import Console
     j = QueueEntry("8", "train", "RUNNING", "gpu", "0:10:00", 1,
                    user="alice", time_limit="4:00:00")
-    layout = _build_layout([j], 0, [], None, None, current_user="alice", is_jupyter=False)
+    layout = _build_layout([j], 0, [], None, None, current_user="alice",
+                            is_jupyter=False, is_admin=True)
     con = Console(force_terminal=True, width=120)
     with con.capture() as cap:
         con.print(layout)
     rendered = cap.get()
-    assert "E=+2h" not in rendered
+    assert "E=+1h" not in rendered
+
+
+def test_build_layout_extend_hint_hidden_for_non_admin_own_job():
+    """Footer must NOT show the extend hint for a non-admin's own running
+    JupyterLab job -- extend is admin-only, even for the job's owner."""
+    import re as _re
+    from slurmdeck.slurm import QueueEntry
+    from slurmdeck.dashboard import _build_layout
+    from rich.console import Console
+    j = QueueEntry("9", "lab-session", "RUNNING", "gpu", "0:10:00", 1,
+                   user="alice", time_limit="2:00:00")
+    layout = _build_layout([j], 0, [], None, None, current_user="alice",
+                            is_jupyter=True, is_admin=False)
+    con = Console(force_terminal=True, width=120)
+    with con.capture() as cap:
+        con.print(layout)
+    plain = _re.sub(r"\x1b\[[0-9;]*m", "", cap.get())
+    assert "E=+1h" not in plain
+    assert "E=─" in plain
 
 
 # ── _wait_key regression and new key codes ────────────────────────────────────

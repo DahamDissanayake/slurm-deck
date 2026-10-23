@@ -368,11 +368,15 @@ def _build_layout(
     layout["log"].update(Panel(log_text, title=log_title, border_style="cyan"))
     _active = selected_job and selected_job.state not in ("COMPLETED", "FAILED", "CANCELLED")
     can_cancel = bool(_active and (is_own_job or is_admin))
-    can_extend = (is_own_job and is_jupyter
+    # Extend is admin-only (SLURM only lets root/operator increase a
+    # TimeLimit -- see extend_job_time in slurm.py), never gated on
+    # is_own_job: an admin must be able to extend anyone's job, and a
+    # non-admin must never be able to extend even their own.
+    can_extend = (is_admin and is_jupyter
                   and selected_job and selected_job.state == "RUNNING")
     can_connect = bool(is_own_job and is_jupyter)
     cancel_hint = "[bold]C=cancel[/bold]" if can_cancel else "[dim]C=─[/dim]"
-    extend_hint = "[bold]E=+2h[/bold]"   if can_extend else "[dim]E=─[/dim]"
+    extend_hint = "[bold]E=+1h[/bold]"   if can_extend else "[dim]E=─[/dim]"
     connect_hint = "   [bold]T=connect[/bold]" if can_connect else ""
     admin_tag   = "  [dim](admin)[/dim]" if is_admin else ""
     layout["footer"].update(
@@ -624,8 +628,9 @@ def run_dashboard(job_id: str | None = None) -> None:
         # jupyter job — the footer's T=connect hint and the token-bearing
         # Connect card must never appear to be offered for someone else's job.
         _is_jupyter[0] = False
-        if sel and is_own and sel.job_id:
+        if sel and (is_own or _admin) and sel.job_id:
             _is_jupyter[0] = _is_jupyter_job(sel.job_id, str(Path(jdir) / sel.user))
+        if sel and is_own and sel.job_id:
             remaining = _time_remaining(sel)
             if (remaining is not None
                     and remaining < 1800
@@ -712,15 +717,20 @@ def run_dashboard(job_id: str | None = None) -> None:
                         live.start()
                 elif key == "e":
                     sel = jobs[selected_idx] if jobs and selected_idx < len(jobs) else None
-                    if sel and sel.user == current_user and _is_jupyter[0] and sel.state == "RUNNING":
+                    if sel and not _admin:
                         live.stop()
-                        success, msg = extend_job_time(sel.job_id, 2)
+                        err("Only admins can extend a job's time limit.")
+                        import time as _t; _t.sleep(1.5)
+                        live.start()
+                    elif sel and _admin and _is_jupyter[0] and sel.state == "RUNNING":
+                        live.stop()
+                        success, msg = extend_job_time(sel.job_id, 1, admin=True)
                         (ok if success else err)(msg)
                         if success:
                             try:
                                 from slurmdeck import daemonclient as _dc2
                                 from slurmdeck import mailer as _m2
-                                _email2 = _dc2.email_for(current_user)
+                                _email2 = _dc2.email_for(sel.user)
                                 if _email2:
                                     from slurmdeck.slurm import show_job as _sj
                                     _details = _sj(sel.job_id)
@@ -729,11 +739,12 @@ def run_dashboard(job_id: str | None = None) -> None:
                                         if "TimeLimit=" in _line:
                                             _new_lim = _line.split("TimeLimit=")[1].split()[0]
                                             break
-                                    _m2.send_jupyter_extended(_email2, sel.job_id, sel.name, _new_lim, 2)
+                                    _m2.send_jupyter_extended(_email2, sel.job_id, sel.name, _new_lim, 1)
                             except Exception:
                                 pass
                             from slurmdeck import auditclient as _audit2
-                            _audit2.log("jupyter_extend", detail="+2h", job_id=sel.job_id)
+                            _detail = "dashboard_admin" if sel.user != current_user else "dashboard"
+                            _audit2.log("jupyter_extend", detail=f"+1h:{_detail}", job_id=sel.job_id)
                         import time as _t2; _t2.sleep(0.8)
                         _refresh_data()
                         live.start()
