@@ -1,0 +1,224 @@
+#!/usr/bin/env python3
+"""slurm-deck-mailer: Slurm MailProg that sends an HTML job notice.
+
+Slurm runs it as SlurmUser:  slurm-deck-mailer -s "Slurm Job_id=N Name=X Ended, ..." to@addr
+It reads the job's details from sacct, builds the notice and sends it through
+the Resend API, falling back to msmtp with the plain Slurm text.
+
+Every value from Slurm or the site config is HTML-escaped: job names, paths and
+users are user-controlled. Times are labelled in the cluster timezone
+(CLUSTER_TZ). Settings come from the environment, then site.env and
+secrets.env; the mail API key lives only in secrets.env.
+"""
+
+from __future__ import annotations
+
+import html
+import json
+import os
+import re
+import subprocess
+import sys
+import urllib.error
+import urllib.request
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+
+def _cfg(key: str, default: str = "") -> str:
+    if key in os.environ:
+        return os.environ[key]
+    for path in (os.environ.get("SD_SECRETS_ENV", "/etc/slurm-deck-web/secrets.env"),
+                 os.environ.get("SD_SITE_ENV", "/etc/slurm-deck-web/site.env")):
+        try:
+            with open(path) as f:
+                for line in f:
+                    k, sep, v = line.strip().partition("=")
+                    if sep and not k.startswith("#") and k.strip() == key:
+                        return v.strip().strip('"').strip("'")
+        except OSError:
+            continue
+    return default
+
+
+def parse_args(argv: list[str]) -> tuple[str, str]:
+    """(subject, recipient) from `mailer -s SUBJECT RECIPIENT`."""
+    subject, recipient, i = "", "", 1
+    while i < len(argv):
+        if argv[i] == "-s" and i + 1 < len(argv):
+            subject = argv[i + 1]
+            i += 2
+        else:
+            recipient = argv[i]
+            i += 1
+    return subject, recipient
+
+
+_EVENTS = [  # (subject words, event, state)
+    (("began", "started"), "STARTED", ""),
+    (("ended", "completed"), "ENDED", "COMPLETED"),
+    (("failed",), "FAILED", "FAILED"),
+    (("time limit", "timeout"), "TIMEOUT", "TIMEOUT"),
+    (("requeue",), "REQUEUED", "REQUEUED"),
+    (("out_of_memory", "out of memory"), "OOM", "OUT_OF_MEMORY"),
+]
+
+
+def parse_slurm_subject(subject: str) -> dict:
+    info = {"raw_subject": subject, "job_id": "", "job_name": "", "event": "UNKNOWN",
+            "runtime": "", "state": "", "exit_code": ""}
+    if m := re.search(r"Job_id=(\d+)", subject):
+        info["job_id"] = m.group(1)
+    if m := re.search(r"Name=(\S+)", subject):
+        info["job_name"] = m.group(1)
+    s = subject.lower()
+    for words, event, state in _EVENTS:
+        if any(w in s for w in words):
+            info["event"], info["state"] = event, state
+            break
+    if m := re.search(r"Run time\s+([\d:-]+)", subject, re.I):
+        info["runtime"] = m.group(1)
+    if m := re.search(r"ExitCode\s+(\d+)", subject, re.I):
+        info["exit_code"] = m.group(1)
+    return info
+
+
+_FIELDS = ("JobID,JobName,User,Partition,NodeList,AllocCPUS,ReqTRES,State,ExitCode,"
+           "Elapsed,Timelimit,Submit,Start,End,WorkDir,StdOut,StdErr")
+
+
+def sacct_details(job_id: str) -> dict:
+    try:
+        r = subprocess.run(["sacct", "-j", job_id, "--format", _FIELDS, "--noheader",
+                            "--parsable2", "-X"], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return {}
+    lines = [ln for ln in r.stdout.splitlines() if ln]
+    if not lines:
+        return {}
+    keys = _FIELDS.split(",")
+    return dict(zip(keys, lines[0].split("|") + [""] * len(keys)))
+
+
+_STYLE = {  # event: (accent, headline, subtitle)
+    "STARTED": ("#3B82F6", "Job is now running", "Your job has its resources and is running."),
+    "ENDED": ("#22C55E", "Job completed", "The job finished cleanly. Your output is ready."),
+    "FAILED": ("#EF4444", "Job failed", "The job exited with an error. Check the log paths below."),
+    "TIMEOUT": ("#F59E0B", "Job exceeded time limit",
+                "The job was stopped at its time limit. Ask for more time and resubmit."),
+    "REQUEUED": ("#8B5CF6", "Job has been requeued", "The job is back in the queue and will run again."),
+    "OOM": ("#EF4444", "Job ran out of memory",
+            "The job used more memory than it asked for. Ask for more and resubmit."),
+    "UNKNOWN": ("#6B7280", "Job status update", "The scheduler reported a status change."),
+}
+
+
+def _local_now() -> str:
+    name = _cfg("CLUSTER_TZ", "UTC")
+    try:
+        tz = ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError):
+        tz, name = ZoneInfo("UTC"), "UTC"
+    return datetime.now(timezone.utc).astimezone(tz).strftime("%d %b %Y %H:%M ") + name
+
+
+def _row(label: str, value: str) -> str:
+    if not value or value.strip() in ("Unknown", "None", "N/A", "?"):
+        return ""
+    return (f'<tr><td style="padding:8px 0;color:#6B7280;font-size:11px;font-weight:600;'
+            f'text-transform:uppercase;width:120px;vertical-align:top">{label}</td>'
+            f'<td style="padding:8px 0 8px 16px;color:#111827;font-size:13px;'
+            f'font-family:monospace;word-break:break-all">{html.escape(value)}</td></tr>')
+
+
+def build_html(info: dict, details: dict) -> str:
+    event = info.get("event", "UNKNOWN")
+    accent, headline, subtitle = _STYLE.get(event, _STYLE["UNKNOWN"])
+    gpus = re.search(r"gres/(?:gpu|shard)=(\d+)", details.get("ReqTRES", ""))
+    rows = "".join(_row(label, value) for label, value in (
+        ("Job ID", info.get("job_id") or details.get("JobID", "")),
+        ("Job name", details.get("JobName") or info.get("job_name", "")),
+        ("User", details.get("User", "")),
+        ("Partition", details.get("Partition", "")),
+        ("Node", details.get("NodeList", "")),
+        ("CPUs", details.get("AllocCPUS", "")),
+        ("GPU pods", gpus.group(1) if gpus else ""),
+        ("Submitted", details.get("Submit", "")),
+        ("Started", details.get("Start", "")),
+        ("Ended", details.get("End", "")),
+        ("Elapsed", details.get("Elapsed") or info.get("runtime", "")),
+        ("Time limit", details.get("Timelimit", "")),
+        ("Exit code", details.get("ExitCode") or info.get("exit_code", "")),
+        ("Work dir", details.get("WorkDir", "")),
+        ("stdout", details.get("StdOut", "")),
+        ("stderr", details.get("StdErr", "")),
+    ))
+    status = html.escape(details.get("State") or info.get("state") or event)
+    cluster = html.escape(_cfg("CLUSTER_NAME", "GPU Cluster"))
+    return f"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"></head>
+<body style="margin:0;background:#F4F4F5;font-family:-apple-system,'Segoe UI',Roboto,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="padding:32px 0"><tr><td align="center">
+<table width="580" cellpadding="0" cellspacing="0" style="max-width:580px;width:100%">
+<tr><td bgcolor="{accent}" style="height:4px;font-size:0">&nbsp;</td></tr>
+<tr><td bgcolor="#111827" style="padding:26px 32px">
+  <p style="margin:0 0 16px;color:#9CA3AF;font-size:11px;letter-spacing:2px;text-transform:uppercase">{cluster}</p>
+  <h1 style="margin:0 0 8px;color:#F9FAFB;font-size:22px">{headline}</h1>
+  <p style="margin:0;color:#9CA3AF;font-size:14px">{subtitle}</p>
+  <p style="margin:16px 0 0;color:{accent};font-size:11px;font-weight:700;text-transform:uppercase">{status}</p>
+</td></tr>
+<tr><td bgcolor="#FFFFFF" style="padding:20px 32px"><table width="100%" cellpadding="0" cellspacing="0">{rows}</table></td></tr>
+<tr><td style="padding:16px 32px;color:#A1A1AA;font-size:11px">{cluster} &middot; {html.escape(_local_now())}</td></tr>
+</table></td></tr></table></body></html>"""
+
+
+def build_subject(info: dict, details: dict) -> str:
+    name = details.get("JobName") or info.get("job_name") or "job"
+    headline = _STYLE.get(info.get("event", "UNKNOWN"), _STYLE["UNKNOWN"])[1]
+    job_id = info.get("job_id") or details.get("JobID", "")
+    subject = f'[Slurm Deck] {headline}: "{name}"' + (f" [#{job_id}]" if job_id else "")
+    return " ".join(subject.split())  # no CR/LF: a header can't be injected
+
+
+def send_resend(to: str, subject: str, page: str) -> None:
+    key = _cfg("RESEND_API_KEY")
+    if not key:
+        raise RuntimeError("RESEND_API_KEY not set")
+    body = {"from": _cfg("MAIL_FROM"), "to": [to], "subject": subject, "html": page}
+    req = urllib.request.Request(
+        "https://api.resend.com/emails", data=json.dumps(body).encode(), method="POST",
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json",
+                 "User-Agent": "slurm-deck-mailer/2.0"})
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        sys.stderr.write(f"slurm-deck-mailer: sent to {to}, HTTP {resp.status}\n")
+
+
+def fallback_msmtp(to: str, subject: str, body: str) -> None:
+    # msmtp reads the whole message, headers included, from stdin.
+    message = f"Subject: {' '.join(subject.split())}\nTo: {to}\n\n{body}"
+    try:
+        subprocess.run(["msmtp", to], input=message, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError) as exc:
+        sys.stderr.write(f"slurm-deck-mailer: msmtp fallback failed: {exc}\n")
+
+
+def main() -> None:
+    # Admin kill switch: this flag file on the share stops all job mail.
+    if os.path.exists(os.path.join(_cfg("NFS_ROOT", "/shared"), ".mail-disabled")):
+        sys.exit(0)
+    subject, recipient = parse_args(sys.argv)
+    body = sys.stdin.read()
+    if not recipient:
+        sys.stderr.write("slurm-deck-mailer: no recipient\n")
+        sys.exit(1)
+    info = parse_slurm_subject(subject)
+    details = sacct_details(info["job_id"]) if info["job_id"] else {}
+    try:
+        send_resend(recipient, build_subject(info, details), build_html(info, details))
+    except (RuntimeError, OSError, urllib.error.URLError) as exc:
+        sys.stderr.write(f"slurm-deck-mailer: Resend failed ({exc}), using msmtp\n")
+        fallback_msmtp(recipient, subject, body)
+
+
+if __name__ == "__main__":
+    main()
