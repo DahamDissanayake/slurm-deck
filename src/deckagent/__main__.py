@@ -1,8 +1,4 @@
-"""`python -m deckagent`: run deck-agent with settings from the environment.
-
-Session resolution (deckagent.sessions) is not wired in yet, so only the
-worker account is admitted; user and admin requests get 401.
-"""
+"""`python -m deckagent`: run deck-agent with settings from the environment."""
 
 from __future__ import annotations
 
@@ -12,12 +8,16 @@ import signal
 import threading
 
 from deckagent.config import load_config
-from deckagent.server import AgentServer, worker_only
+from deckagent.server import AgentServer
+from deckagent.sessions import PgSessionStore, resolve_caller
 
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    server = AgentServer(load_config(os.environ), store=None, resolve=worker_only)
+    config = load_config(os.environ)
+    if not config.db_ro_url:
+        raise SystemExit("SD_DB_RO_URL is required: deck-agent reads sessions from it")
+    server = AgentServer(config, store=PgSessionStore(config.db_ro_url), resolve=resolve_caller)
 
     def stop(signum: int, frame: object) -> None:
         # shutdown() waits for serve_forever, so it can't run on this thread.
