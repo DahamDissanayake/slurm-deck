@@ -14,7 +14,7 @@ import hashlib
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Protocol
+from typing import Any, Protocol
 
 from deckagent.config import AgentConfig
 from deckagent.protocol import AgentError, Caller
@@ -55,7 +55,7 @@ class PgSessionStore:
     def __init__(self, dsn: str) -> None:
         self.dsn = dsn
 
-    def _one(self, sql: str, arg: str) -> tuple[object, ...] | None:
+    def _one(self, sql: str, arg: str) -> tuple[Any, ...] | None:
         import psycopg
 
         with psycopg.connect(self.dsn, autocommit=True, connect_timeout=5) as conn:
@@ -64,11 +64,16 @@ class PgSessionStore:
     def lookup(self, token_hash: str) -> SessionRow | None:
         row = self._one(f"SELECT {_FIELDS}, acting_as_username FROM agent_sessions "
                         "WHERE token_hash = %s", token_hash)
-        return SessionRow(*row) if row else None  # type: ignore[arg-type]
+        return _to_row(row, row[7]) if row else None
 
     def account(self, username: str) -> SessionRow | None:
         row = self._one(f"SELECT {_FIELDS} FROM agent_accounts WHERE username = %s", username)
-        return SessionRow(*row, acting_as_username=None) if row else None  # type: ignore[arg-type]
+        return _to_row(row, None) if row else None
+
+
+def _to_row(v: tuple[Any, ...], acting_as: str | None) -> SessionRow:
+    return SessionRow(username=v[0], role=v[1], linux_kind=v[2], uid=v[3], status=v[4],
+                      created_at=v[5], last_seen_at=v[6], acting_as_username=acting_as)
 
 
 def _no_session() -> AgentError:
