@@ -2,7 +2,7 @@
 # install-wizard.sh — entry point for the Slurm Deck installation wizard.
 #
 # Usage (from a fresh GPU host or a machine that will orchestrate install):
-#   git clone https://github.com/DahamDissanayake/slurm-deck.git
+#   git clone -b legacy/v1.4-tui https://github.com/DahamDissanayake/slurm-deck.git
 #   cd slurm-deck
 #   sudo bash install-wizard.sh
 #

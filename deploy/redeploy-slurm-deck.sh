@@ -30,7 +30,7 @@ fi
 rm -f "$0" 2>/dev/null || true
 
 INSTALL="${SD_GPU_HOME:-/opt/slurm-deck}"
-BRANCH="${SD_GPU_BRANCH:-main}"
+BRANCH="${SD_GPU_BRANCH:-legacy/v1.4-tui}"
 # Where to pull updates FROM. Defaults to the canonical dev clone on this host
 # because the GitHub origin has diverged from the deployed history. Can be any
 # git remote name, URL, or local path that holds the blessed $BRANCH.

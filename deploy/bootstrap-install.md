@@ -5,7 +5,7 @@
 
 ```bash
 # 1. Canonical live clone — readable by all gpuusers, pull-to-update by admin only
-sudo git clone https://github.com/DahamDissanayake/slurm-deck.git /opt/slurm-deck
+sudo git clone -b legacy/v1.4-tui https://github.com/DahamDissanayake/slurm-deck.git /opt/slurm-deck
 sudo chown -R slurmadmin:gpuusers /opt/slurm-deck
 sudo chmod -R 0750 /opt/slurm-deck
 

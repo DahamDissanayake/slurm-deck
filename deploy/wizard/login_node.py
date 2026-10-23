@@ -12,6 +12,7 @@ from state import State
 from ssh_target import Target
 
 REPO_URL = "https://github.com/DahamDissanayake/slurm-deck.git"
+REPO_BRANCH = "legacy/v1.4-tui"
 INSTALL_DIR = "/opt/slurm-deck"
 
 
@@ -40,7 +41,7 @@ def run(state: State, site: dict, target: Target) -> None:
         if already.returncode == 0:
             ok(f"{INSTALL_DIR} already a git clone — skipping clone")
         else:
-            target.run(["sudo", "git", "clone", REPO_URL, INSTALL_DIR])
+            target.run(["sudo", "git", "clone", "-b", REPO_BRANCH, REPO_URL, INSTALL_DIR])
             target.run(["sudo", "chown", "-R",
                         f"slurmadmin:{site['GPUUSERS_GROUP']}", INSTALL_DIR])
             ok(f"cloned to {INSTALL_DIR}")

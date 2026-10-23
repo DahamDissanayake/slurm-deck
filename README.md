@@ -592,7 +592,7 @@ project's own reference cluster is built: one physical GPU host running a
 login-node VM, reached over a forwarded SSH port.
 
 ```bash
-git clone https://github.com/DahamDissanayake/slurm-deck.git
+git clone -b legacy/v1.4-tui https://github.com/DahamDissanayake/slurm-deck.git
 cd slurm-deck
 sudo bash install-wizard.sh
 ```
