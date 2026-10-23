@@ -1,0 +1,16 @@
+{
+  "sensitivePaths": [
+    "src/deckagent/**",
+    "gpuhost/**",
+    "src/sdweb/auth/**",
+    "src/sdweb/accounts/**",
+    "src/sdweb/proxy/**",
+    "src/sdweb/migrations/**",
+    "deploy/systemd/**",
+    "deploy/cluster/**",
+    "deploy/installer/**",
+    "deploy/cutover/**",
+    "deploy/compose.yaml",
+    "deploy/Caddyfile"
+  ]
+}
