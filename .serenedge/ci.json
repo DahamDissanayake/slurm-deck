@@ -1,0 +1,10 @@
+{
+  "command": "node scripts/ci.mjs",
+  "files": [
+    "scripts/ci.sh",
+    "scripts/ci.mjs",
+    "pyproject.toml",
+    ".github/workflows/ci.yml"
+  ],
+  "timeoutMinutes": 30
+}

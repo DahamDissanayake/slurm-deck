@@ -57,3 +57,16 @@ main  ◄── release merge ──  dev  ◄── PR ──  task/PROJ-42-add
 - Nothing site-specific is hardcoded: IPs, hostnames, ports, email domains and
   timezone come from configuration or the admin panel, so other sites can run
   this as open source.
+
+## CI
+
+- Run `serenedge ci` before every push. It runs `scripts/ci.sh` (through
+  `scripts/ci.mjs`): lint, typecheck, unit, integration, root and build, and
+  stops at the first failure. Integration tests use `TEST_DATABASE_URL`, or a
+  throwaway `postgres:16` container when it is unset and Docker is running.
+- On a machine that isn't Linux, the script reruns itself inside a
+  `python:3.11-slim` container as a non-root user, so Docker must be running.
+- GitHub runs the same steps (`.github/workflows/ci.yml`) only on pull requests
+  into `main`, not on `dev` or task branches.
+- CI files (`scripts/ci.sh`, `scripts/ci.mjs`, `.serenedge/ci.json`,
+  `.github/workflows/`) change only in tasks marked as CI changes.
