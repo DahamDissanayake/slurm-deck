@@ -82,8 +82,13 @@ def test_image_def_quotes_version_specifiers(name):
     """Unquoted, `pip install transformers>=4.40` redirects to a file named
     `=4.40` and installs an unbounded package."""
     text = (IMAGES / f"{name}.def").read_text()
-    for token in re.findall(r"(?<![\"\w])([A-Za-z][\w.-]*(?:[<>=]=?)[^\s\"\\]+)", text):
-        pytest.fail(f"{name}.def: unquoted specifier {token!r}")
+    # The pip install commands, continuation lines joined.
+    blocks = re.findall(r"pip install(?:[^\n]*\\\n)*[^\n]*", text)
+    assert blocks
+    for block in blocks:
+        for word in shlex.split(block.replace("\\\n", " "), posix=False):
+            if re.search(r"[<>=*]", word) and not word.startswith(("--", "http")):
+                assert word.startswith('"'), f"{name}.def: unquoted specifier {word!r}"
     for lib in FAST_MOVING:
         for m in re.finditer(rf'"{lib}[^"]*"', text):
             assert "<" in m.group(0), f"{name}.def: {m.group(0)} has no upper bound"
@@ -137,9 +142,9 @@ def test_build_quotes_user_packages():
 
 
 def test_build_from_spec_verifies_its_packages():
-    s = _build(spec_path=str(SPECS / "llm-finetune.yml"), packages="")
-    assert f"conda env create -p /shared/users/amasha/envs/my-env -f {SPECS}/llm-finetune.yml" \
-        in s.replace("'", "")
+    spec = str(SPECS / "llm-finetune.yml")
+    s = _build(spec_path=spec, packages="")
+    assert f"conda env create -p /shared/users/amasha/envs/my-env -f {shlex.quote(spec)}" in s
     packages = re.search(r"export SD_ENV_PACKAGES=(.*)", s)
     assert packages and "trl" in shlex.split(packages.group(1))[0].split()
 
