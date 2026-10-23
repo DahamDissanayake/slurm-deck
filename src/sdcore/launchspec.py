@@ -2,7 +2,8 @@
 
 Ported from legacy/v1.4-tui slurmdeck/launchspec.py. Intents are now
 `notebook`, `batch`, `terminal` (replaces the TUI's shell) and `smoke`. Every
-intent but smoke defaults to the site's default time limit (8 h). The TUI-only
+intent but smoke defaults to the site's default time limit (8 h); smoke is
+fixed at 1 pod, 4 CPU, 8 GB, 30 minutes. The TUI-only
 wording helpers and the recent-scripts scan were not ported.
 """
 
@@ -11,11 +12,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from sdcore.pods import pod_count_known, resources_for
-from sdcore.sbatch import JobSpec
+from sdcore.sbatch import SMOKE_CPUS, SMOKE_MEM_GB, SMOKE_TIME, JobSpec
 from sdcore.slurmparse import NodeStats
 
 DEFAULT_TIME = "08:00:00"
-SMOKE_TIME = "00:10:00"
 
 
 @dataclass
@@ -59,8 +59,12 @@ def default_spec(intent: str, stats: NodeStats | None,
                  default_time: str = DEFAULT_TIME) -> LaunchSpec:
     """A fresh one-pod LaunchSpec for intent, sized from live stats when given."""
     ls = LaunchSpec(intent=intent)
+    if intent == "smoke":
+        # The smoke test is a fixed small job, the same size on any cluster.
+        ls.cpus, ls.mem_gb, ls.time_limit = SMOKE_CPUS, SMOKE_MEM_GB, SMOKE_TIME
+        return ls
     apply_pods(ls, 1, stats)
-    ls.time_limit = SMOKE_TIME if intent == "smoke" else default_time
+    ls.time_limit = default_time
     return ls
 
 

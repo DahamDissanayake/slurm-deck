@@ -4,16 +4,23 @@ The legacy folder-creation tests belong to deck-agent now (it creates job
 folders as the user); the renderer tests are here.
 """
 
+import shlex
+import shutil
+import subprocess
 from datetime import datetime
 
 import pytest
 
 from sdcore.sbatch import (
+    EnvChoice,
     JobSpec,
     gres_directive,
     job_folder_name,
+    parse_smoke,
     pip_install_block,
     render_batch,
+    render_smoke,
+    run_command_for,
 )
 
 FOLDER = "/shared/jobs/amasha/train_model_20260601_045303"
@@ -143,3 +150,65 @@ def test_pip_install_block_quotes_packages():
 def test_pip_install_block_requirements():
     block = pip_install_block("/shared/users/a/req s.txt", "")
     assert "-r '/shared/users/a/req s.txt'" in block
+
+
+# ── EnvChoice, run commands and the smoke test (Phase 3) ─────────────────────
+
+def test_run_command_quotes_a_script_path_and_args(tmp_path):
+    script = '/shared/users/a/my "x" run.py'
+    cmd = run_command_for(script, "--epochs 10 --name 'a b'")
+    assert shlex.split(cmd) == ["python3", script, "--epochs", "10", "--name", "a b"]
+    assert shlex.split(run_command_for("/shared/users/a/go.sh", ""))[0] == "bash"
+    rendered = render(spec(run_command=cmd))
+    if shutil.which("bash"):
+        path = tmp_path / "job.sbatch"
+        path.write_text(rendered)
+        assert subprocess.run(["bash", "-n", str(path)]).returncode == 0
+    assert shlex.split(rendered.rstrip().splitlines()[-1])[1] == script
+
+
+def test_run_command_refuses_unbalanced_args():
+    with pytest.raises(ValueError):
+        run_command_for("/shared/users/a/x.py", "--name 'oops")
+
+
+def test_env_choice_round_trips_spec_fields():
+    assert EnvChoice("conda", "/shared/envs/pt").as_fields() == {
+        "conda_env": "/shared/envs/pt", "venv_path": "", "container_image": ""}
+    assert EnvChoice.from_fields("", "", "/shared/images/a.sif") == EnvChoice(
+        "container", "/shared/images/a.sif")
+    assert EnvChoice.from_fields("", "", "") == EnvChoice("none", "")
+
+
+CONDA = EnvChoice("conda", "/shared/envs/pt")
+
+
+def _smoke(env: EnvChoice = CONDA) -> str:
+    return render_smoke("amasha", "/shared/jobs/amasha/smoke_test_1", "/home/amasha", env,
+                        "gpu")
+
+
+def test_smoke_uses_the_fixed_small_allocation():
+    s = _smoke()
+    for line in ("#SBATCH --gres=shard:1", "#SBATCH --cpus-per-task=4", "#SBATCH --mem=8G",
+                 "#SBATCH --time=00:30:00", "#SBATCH --partition=gpu",
+                 "#SBATCH --export=NONE", "conda activate /shared/envs/pt"):
+        assert line in s, line
+    assert s.index("export HOME=/home/amasha") < s.index("conda activate")
+
+
+def test_smoke_script_is_valid_bash(tmp_path):
+    if not shutil.which("bash"):
+        pytest.skip("no bash")
+    for env in (EnvChoice("conda", "/shared/envs/pt"), EnvChoice("venv", "/v"),
+                EnvChoice("container", "/shared/images/x y.sif"), EnvChoice("none", "")):
+        path = tmp_path / "smoke.sbatch"
+        path.write_text(_smoke(env))
+        assert subprocess.run(["bash", "-n", str(path)]).returncode == 0, env
+
+
+def test_parse_smoke_reads_all_three_lines():
+    out = ("GPU 0: NVIDIA RTX\nSMOKE nvidia-smi=ok\nnoise\nSMOKE torch-cuda=skipped\n"
+           "SMOKE user-folder=fail\nSMOKE bogus line\n")
+    assert parse_smoke(out) == {"nvidia-smi": "ok", "torch-cuda": "skipped",
+                                "user-folder": "fail"}
