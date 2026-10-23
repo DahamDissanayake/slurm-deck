@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Literal
 
-from sdcore.sbatch import _activate, _clean_env, _directive, EnvChoice
+from sdcore.sbatch import EnvChoice, _activate, _clean_env, _directive
 
 BUILD_CPUS = 8
 BUILD_MEM_GB = 16
@@ -155,6 +155,7 @@ def render_env_build(user: str, folder: str, home: str, *, kind: Literal["conda"
         "",
     ]
     if kind == "conda":
+        # Just the line that sources conda.sh, so `conda` works in this shell.
         lines += _activate(EnvChoice("conda", "base"), nfs_root)[:1]
         if spec_path:
             lines.append(f"conda env create -p {q(dest)} -f {q(spec_path)}")

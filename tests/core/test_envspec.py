@@ -28,7 +28,8 @@ SPECS = REPO / "deploy" / "cluster" / "envs"
 IMAGES = REPO / "deploy" / "cluster" / "images"
 EXPECTED = ["llm-finetune", "llm-serve", "vision", "diffusion", "data-science"]
 FAST_MOVING = ("transformers", "trl")
-REQUIREMENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*(\[[^\]]+\])?([<>=!~]=?[^\s,]+(,[<>=!~]=?[^\s,]+)*)?$")
+REQUIREMENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*(\[[^\]]+\])?"
+                         r"([<>=!~]=?[^\s,]+(,[<>=!~]=?[^\s,]+)*)?$")
 
 
 def _spec(name: str) -> str:
