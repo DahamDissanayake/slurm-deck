@@ -32,6 +32,8 @@
 
 ### Task 1: `deckagent.fsops` — file operations as the user
 
+**SerenEdge:** `SLURM-27`
+
 **Files:**
 - Create: `src/deckagent/fsops.py`, `tests/agent/test_fsops.py`
 - Source: `legacy/v1.4-tui:slurmdeck/upload.py::_unzip_in_folder` (traversal checks), `slurmdeck/files.py` (listing).
@@ -70,6 +72,8 @@
 
 ### Task 2: deck-agent file verbs and upload grants
 
+**SerenEdge:** `SLURM-28`
+
 **Files:**
 - Create: `src/deckagent/verbs/files.py`, `src/deckagent/grants.py`, `src/deckagent/janitor.py`, `tests/agent/test_verbs_files.py`, `tests/agent/test_grants.py`
 
@@ -90,6 +94,8 @@
 ---
 
 ### Task 3: tus upload endpoint in `web`
+
+**SerenEdge:** `SLURM-29`
 
 **Files:**
 - Create: `src/sdweb/files/__init__.py`, `src/sdweb/files/tus.py`, `src/sdweb/migrations/versions/0005_uploads.py`, `tests/web/test_tus.py`
@@ -115,6 +121,8 @@
 
 ### Task 4: Files API
 
+**SerenEdge:** `SLURM-30`
+
 **Files:**
 - Create: `src/sdweb/files/routes.py`, `tests/web/test_files_api.py`
 
@@ -135,6 +143,8 @@
 ---
 
 ### Task 5: Frontend — Files page, uploads, FilePicker
+
+**SerenEdge:** `SLURM-31`
 
 **Files:**
 - Create: `frontend/src/api/files.ts`, `frontend/src/pages/Files.tsx`, `frontend/src/components/FileTable.tsx`, `frontend/src/components/Breadcrumbs.tsx`, `frontend/src/components/UploadPanel.tsx`, `frontend/src/components/FilePicker.tsx`, `frontend/src/components/TextEditor.tsx`, `frontend/src/components/Preview.tsx`, tests alongside.

@@ -30,6 +30,8 @@
 
 ### Task 1: Installer
 
+**SerenEdge:** `SLURM-45`
+
 **Files:**
 - Create: `deploy/installer/__main__.py`, `deploy/installer/steps.py`, `deploy/installer/state.py`, `deploy/installer/templates/` (`agent.env.tmpl`, `web.env.tmpl`, `secrets.env.tmpl`, `site.env.tmpl`, `gpu-helper.env.tmpl`), `install.sh` (thin wrapper: `exec sudo python3 -m deploy.installer "$@"`), `tests/installer/test_steps.py`
 - Source: `legacy/v1.4-tui:deploy/wizard/` (prompt/target patterns, `ssh_target.py`).
@@ -55,6 +57,8 @@
 
 ### Task 2: Network — port forward, mDNS name, session-port firewall
 
+**SerenEdge:** `SLURM-46`
+
 **Files:**
 - Create: `deploy/cluster/gpuhost/sd-web-forward.sh`, `deploy/cluster/gpuhost/sd-mdns-alias.service`, `deploy/cluster/gpuhost/sd-session-ports.nft`, `tests/installer/test_network.py`
 
@@ -72,6 +76,8 @@
 ---
 
 ### Task 3: Cluster hardening scripts
+
+**SerenEdge:** `SLURM-47`
 
 **Files:**
 - Create: `deploy/cluster/harden/remove-docker-group.sh`, `deploy/cluster/harden/shared-areas.sh`, `deploy/cluster/harden/service-accounts.sh`, `deploy/cluster/sd-stats-writer` + `deploy/systemd/sd-stats-writer.service`, `deploy/cluster/slurm-deck-mailer`, `tests/installer/test_harden.py`
@@ -92,6 +98,8 @@
 
 ### Task 4: Backups
 
+**SerenEdge:** `SLURM-48`
+
 **Files:**
 - Create: `deploy/systemd/sd-backup.service`, `deploy/systemd/sd-backup.timer`, `deploy/cluster/sd-backup.sh`, `docs/operations/restore.md`, `tests/installer/test_backup.py`
 
@@ -106,6 +114,8 @@
 
 ### Task 5: Acceptance run (spec §13)
 
+**SerenEdge:** `SLURM-51`
+
 **Files:**
 - Create: `tests/e2e/conftest.py`, `tests/e2e/test_scenarios.py`, `docs/operations/acceptance-checklist.md`
 
@@ -119,6 +129,8 @@
 ---
 
 ### Task 6: Cutover and rollback tooling
+
+**SerenEdge:** `SLURM-52`
 
 **Files:**
 - Create: `deploy/cutover/snapshot.sh`, `deploy/cutover/classify.py`, `deploy/cutover/cutover.sh`, `deploy/cutover/rollback.sh`, `deploy/cutover/retire-tui.sh`, `docs/operations/cutover-runbook.md`, `tests/installer/test_cutover.py`

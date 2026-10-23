@@ -36,6 +36,8 @@
 
 ### Task 1: Settings, database models, first migration, agent views
 
+**SerenEdge:** `SLURM-11`
+
 **Files:**
 - Create: `src/sdweb/config.py`, `src/sdweb/db.py`, `src/sdweb/models.py`, `alembic.ini`, `src/sdweb/migrations/env.py`, `src/sdweb/migrations/versions/0001_initial.py`, `tests/web/conftest.py`, `tests/web/test_models.py`, `deploy/web.env.example`
 
@@ -67,6 +69,8 @@
 
 ### Task 2: Security primitives and web audit
 
+**SerenEdge:** `SLURM-12`
+
 **Files:**
 - Create: `src/sdweb/security.py`, `src/sdweb/audit.py`, `src/sdweb/auth/common-passwords.txt`, `tests/web/test_security.py`
 
@@ -85,6 +89,8 @@
 ---
 
 ### Task 3: Sign-in, sessions, CSRF, lockout, password set/reset/change
+
+**SerenEdge:** `SLURM-13`
 
 **Files:**
 - Create: `src/sdweb/auth/__init__.py`, `src/sdweb/auth/sessions.py`, `src/sdweb/auth/routes.py`, `src/sdweb/deps.py`, `src/sdweb/app.py`, `tests/web/test_auth.py`
@@ -126,6 +132,8 @@
 
 ### Task 4: Mail outbox, templates and the worker loop
 
+**SerenEdge:** `SLURM-14`
+
 **Files:**
 - Create: `src/sdweb/mail/__init__.py`, `src/sdweb/mail/templates.py`, `src/sdweb/mail/senders.py`, `src/sdweb/worker/__init__.py`, `src/sdweb/worker/__main__.py`, `src/sdweb/worker/mail_task.py`, `tests/web/test_mail.py`
 
@@ -144,6 +152,8 @@
 ---
 
 ### Task 5: Account management API (admin)
+
+**SerenEdge:** `SLURM-15`
 
 **Files:**
 - Create: `src/sdweb/accounts/__init__.py`, `src/sdweb/accounts/service.py`, `src/sdweb/accounts/routes.py`, `tests/web/test_accounts.py`
@@ -177,6 +187,8 @@
 
 ### Task 6: Applications and the allow-list
 
+**SerenEdge:** `SLURM-16`
+
 **Files:**
 - Create: `src/sdweb/accounts/applications.py`, `src/sdweb/accounts/allowlist.py`, `tests/web/test_applications.py`, `tests/web/test_allowlist.py`
 
@@ -206,6 +218,8 @@
 
 ### Task 7: Frontend shell, design tokens and public pages
 
+**SerenEdge:** `SLURM-17`
+
 **Files:**
 - Create: `frontend/package.json`, `frontend/vite.config.ts`, `frontend/tsconfig.json`, `frontend/tailwind.config.ts`, `frontend/index.html`, `frontend/src/main.tsx`, `frontend/src/styles/tokens.css`, `frontend/src/api/client.ts`, `frontend/src/api/auth.ts`, `frontend/src/app/AppShell.tsx`, `frontend/src/app/routes.tsx`, `frontend/src/app/ThemeToggle.tsx`, `frontend/src/app/ViewAsBanner.tsx`, `frontend/src/pages/SignIn.tsx`, `frontend/src/pages/Apply.tsx`, `frontend/src/pages/SetPassword.tsx`, `frontend/src/pages/ForgotPassword.tsx`, `frontend/src/pages/Placeholder.tsx`, `frontend/src/components/Panel.tsx`, `frontend/src/components/Wordmark.tsx`, `frontend/src/**/*.test.tsx`
 
@@ -221,12 +235,14 @@
   - `ThemeToggle` persists `localStorage["sd-theme"]` (`light`|`dark`|absent), wrapped in try/catch.
 
 - [ ] **Step 1:** Vitest tests: SignIn hides Apply when `open:false`; shows server error `bad_credentials` as "That email and password don't match."; ThemeToggle sets `data-theme` and survives a throwing `localStorage`; ViewAsBanner renders when `acting_as` present; `apiFetch` adds the CSRF header on POST only.
-- [ ] **Step 2:** `npm test` → FAIL. **Step 3:** Implement. **Step 4:** `npm test && npm run build` → PASS, `dist/` produced.
+- [ ] **Step 2:** `npm test` → FAIL. **Step 3:** Implement. **Step 4:** `npm test && npm run build` → PASS, `dist/` produced. Add frontend steps to `scripts/ci.sh` (`frontend-lint` `npm run lint`, `frontend-typecheck` `npx tsc --noEmit`, `frontend-test` `npm test -- --run`, `frontend-build` `npm run build`) and Node 20 to the GitHub workflow; run `serenedge ci` → PASS. This makes the task a CI change.
 - [ ] **Step 5:** Commit `<KEY>: add React shell, design tokens and sign-in/apply/password pages`.
 
 ---
 
 ### Task 8: Admin pages — Users, Requests, Application access
+
+**SerenEdge:** `SLURM-18`
 
 **Files:**
 - Create: `frontend/src/pages/admin/AdminLayout.tsx`, `frontend/src/pages/admin/Users.tsx`, `frontend/src/pages/admin/NewUser.tsx`, `frontend/src/pages/admin/UserDetail.tsx`, `frontend/src/pages/admin/Requests.tsx`, `frontend/src/pages/admin/AppAccess.tsx`, `frontend/src/api/admin.ts`, tests alongside.
@@ -242,6 +258,8 @@
 ---
 
 ### Task 9: Container image, Compose, Caddy and first-admin bootstrap
+
+**SerenEdge:** `SLURM-19`
 
 **Files:**
 - Create: `deploy/web.Dockerfile`, `deploy/compose.yaml`, `deploy/Caddyfile`, `deploy/secrets.env.example`, `src/sdweb/cli.py`, `src/sdweb/static.py`, `tests/web/test_cli.py`, `tests/e2e/test_compose_smoke.py`

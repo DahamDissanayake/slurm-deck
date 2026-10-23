@@ -30,23 +30,32 @@
 
 ### Task 1: Repository scaffold and CI
 
+**SerenEdge:** `SLURM-1`
+
+This is the SerenEdge **CI foundation** task: CI runs locally through `serenedge ci` on every task branch, and GitHub runs the same steps only on pull requests into `main`.
+
 **Files:**
-- Create: `.gitattributes`, `pyproject.toml`, `src/sdcore/__init__.py`, `src/deckagent/__init__.py`, `src/sdweb/__init__.py`, `tests/conftest.py`, `tests/core/test_smoke.py`, `.github/workflows/ci.yml`
-- Modify: `.gitignore` (replace legacy entries with: Python caches, venvs, `node_modules/`, `frontend/dist/`, `*.env` except `*.env.example`, `site.env`, `secrets.env`, `.pytest_cache/`, `.coverage`)
+- Create: `.gitattributes`, `pyproject.toml`, `src/sdcore/__init__.py`, `src/deckagent/__init__.py`, `src/sdweb/__init__.py`, `tests/conftest.py`, `tests/core/test_smoke.py`, `scripts/ci.sh`, `.serenedge/ci.json`, `.serenedge/review.json`, `.github/workflows/ci.yml`
+- Modify: `.gitignore` (replace legacy entries with: Python caches, venvs, `node_modules/`, `frontend/dist/`, `*.env` except `*.env.example`, `site.env`, `secrets.env`, `.pytest_cache/`, `.coverage`), `CLAUDE.md` (CI section)
 
 **Interfaces:**
-- Produces: installable project `slurm-deck-web` with extras `[web]` (fastapi, uvicorn[standard], sqlalchemy>=2, alembic, psycopg[binary]>=3.1, argon2-cffi, httpx), `[agent]` (psycopg[binary]>=3.1), `[dev]` (pytest, pytest-asyncio, httpx). Pytest markers `root` (needs real root + `useradd`) and `pg` (needs `TEST_DATABASE_URL`); both skip cleanly when unavailable.
+- Produces: installable project `slurm-deck-web` with extras `[web]` (fastapi, uvicorn[standard], sqlalchemy>=2, alembic, psycopg[binary]>=3.1, argon2-cffi, httpx), `[agent]` (psycopg[binary]>=3.1), `[dev]` (pytest, pytest-asyncio, ruff, mypy). Pytest markers `root` (needs real root + `useradd`) and `pg` (needs `TEST_DATABASE_URL`); both skip cleanly when unavailable.
+- `scripts/ci.sh` runs, printing `==> STEP <name>` before each: `lint` (`ruff check src tests gpuhost`), `typecheck` (`mypy src/sdcore src/deckagent src/sdweb`), `unit` (`pytest -q -m "not root and not pg"`), `integration` (`pytest -q -m pg` against `TEST_DATABASE_URL`, started as a throwaway `postgres:16` container when Docker is available and the variable is unset), `root` (`sudo -n -E pytest -q -m root` when passwordless sudo is available, otherwise prints `SKIPPED`), `build` (`python -m compileall -q src gpuhost`). Exits non-zero on the first failing step. Phase 2 Task 7 adds the frontend steps.
+- `.serenedge/ci.json` points `serenedge ci` at `scripts/ci.sh` (format per `serenedge ci --help`).
+- `.serenedge/review.json` `sensitivePaths`: `src/deckagent/**`, `gpuhost/**`, `src/sdweb/auth/**`, `src/sdweb/accounts/**`, `src/sdweb/proxy/**`, `src/sdweb/migrations/**`, `deploy/systemd/**`, `deploy/cluster/**`, `deploy/installer/**`, `deploy/cutover/**`, `deploy/compose.yaml`, `deploy/Caddyfile`.
+- `.github/workflows/ci.yml`: on `pull_request` into `main` only; Python 3.11 and 3.12; Postgres 16 service; runs `scripts/ci.sh`.
 
 - [ ] **Step 1:** Write `tests/core/test_smoke.py::test_packages_import` asserting `import sdcore, deckagent, sdweb` works and each has `__version__ == "2.0.0.dev0"`.
 - [ ] **Step 2:** Run `pytest -q` → FAIL (no packages).
-- [ ] **Step 3:** Create the files above. `.gitattributes`: `* text=auto eol=lf`. `conftest.py`: register markers; `root` skips unless `os.geteuid() == 0 and shutil.which("useradd")`; `pg` skips unless `TEST_DATABASE_URL` is set.
-- [ ] **Step 4:** CI workflow: on `pull_request` and `push` to `dev`/`main`; job `python` on `ubuntu-latest`, Python 3.11 and 3.12 matrix, Postgres 16 service, `pip install -e .[web,agent,dev]`, run `pytest -q -m "not root"`, then `sudo -E env PATH=$PATH pytest -q -m root`.
-- [ ] **Step 5:** Run `pytest -q` → PASS.
-- [ ] **Step 6:** Commit `<KEY>: scaffold repo, packages and CI`.
+- [ ] **Step 3:** Create the files above. `.gitattributes`: `* text=auto eol=lf`. `conftest.py`: register markers; `root` skips unless `os.geteuid() == 0 and shutil.which("useradd")`; `pg` skips unless `TEST_DATABASE_URL` is set. CLAUDE.md gains a "CI" section: run `serenedge ci` before every push; CI files change only in tasks marked as CI changes.
+- [ ] **Step 4:** Run `serenedge ci` → every step prints its marker and passes.
+- [ ] **Step 5:** Commit `<KEY>: scaffold repo, packages and CI`.
 
 ---
 
 ### Task 2: `sdcore.slurmparse` and `sdcore.pods`
+
+**SerenEdge:** `SLURM-2`
 
 **Files:**
 - Create: `src/sdcore/slurmparse.py`, `src/sdcore/pods.py`, `tests/core/test_slurmparse.py`, `tests/core/test_pods.py`
@@ -89,6 +98,8 @@
 
 ### Task 3: `sdcore.validate` and `sdcore.names`
 
+**SerenEdge:** `SLURM-3`
+
 **Files:**
 - Create: `src/sdcore/validate.py`, `src/sdcore/names.py`, `tests/core/test_validate.py`, `tests/core/test_names.py`
 - Source: `legacy/v1.4-tui:slurmdeck/validate.py`, `tests/test_validate.py`.
@@ -116,6 +127,8 @@
 ---
 
 ### Task 4: `sdcore.launchspec` and `sdcore.sbatch` (batch jobs)
+
+**SerenEdge:** `SLURM-4`
 
 **Files:**
 - Create: `src/sdcore/launchspec.py`, `src/sdcore/sbatch.py`, `tests/core/test_launchspec.py`, `tests/core/test_sbatch.py`
@@ -147,6 +160,8 @@
 ---
 
 ### Task 5: deck-agent server and protocol
+
+**SerenEdge:** `SLURM-5`
 
 **Files:**
 - Create: `src/deckagent/config.py`, `src/deckagent/protocol.py`, `src/deckagent/server.py`, `src/deckagent/verbs/__init__.py`, `src/deckagent/__main__.py`, `tests/agent/test_server.py`
@@ -182,6 +197,8 @@
 
 ### Task 6: Session resolution (`deckagent.sessions`)
 
+**SerenEdge:** `SLURM-6`
+
 **Files:**
 - Create: `src/deckagent/sessions.py`, `tests/agent/test_sessions.py`
 
@@ -216,6 +233,8 @@
 
 ### Task 7: Identity rules, run-as and local audit
 
+**SerenEdge:** `SLURM-7`
+
 **Files:**
 - Create: `src/deckagent/identity.py`, `src/deckagent/runas.py`, `src/deckagent/audit.py`, `tests/agent/test_identity.py`, `tests/agent/test_runas.py`, `tests/agent/test_audit.py`
 
@@ -248,6 +267,8 @@
 ---
 
 ### Task 8: GPU-host helper and its client
+
+**SerenEdge:** `SLURM-8`
 
 **Files:**
 - Create: `gpuhost/sd-gpu-helper`, `src/deckagent/gpuhost.py`, `tests/gpuhost/test_helper.py`, `tests/agent/test_gpuhost_client.py`, `deploy/cluster/gpuhost/authorized_keys.example`, `deploy/cluster/gpuhost/sudoers-sdprov`
@@ -285,6 +306,8 @@
 ---
 
 ### Task 9: Cluster and account verbs, `AgentClient`, systemd unit
+
+**SerenEdge:** `SLURM-9`
 
 **Files:**
 - Create: `src/deckagent/verbs/cluster.py`, `src/deckagent/verbs/accounts.py`, `src/deckagent/slurmcmd.py`, `src/sdweb/agent.py`, `deploy/systemd/deck-agent.service`, `deploy/agent.env.example`, `tests/agent/test_verbs_cluster.py`, `tests/agent/test_verbs_accounts.py`, `tests/web/test_agent_client.py`, `tests/agent/fakebin/` (fake `scontrol`, `squeue`, `sacct`, `sacctmgr`, `scancel`, `sbatch`, `df`, `useradd`, `groupadd`, `userdel`, `groupdel`, `passwd`, `pkill`, `ssh`)

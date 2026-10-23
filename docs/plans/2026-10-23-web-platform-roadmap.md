@@ -25,6 +25,18 @@ platform on the login node, keeping Slurm as the workload manager.
 | 6 | `2026-10-23-p6-envs-models-admin.md` | Environments (prebuilt, build-as-job, images), Models (HF download as job), Usage, admin Settings / Jobs / Usage / Cluster control / Shared assets / Monitoring | 1–5 |
 | 7 | `2026-10-23-p7-hardening-and-cutover.md` | Installer, cluster hardening (docker group, shared dirs, sshd AllowGroups, service accounts, firewall, port forward, avahi, CA), backups, acceptance run, cutover + rollback tooling | 1–6 |
 
+Task keys: every phase-plan task carries its SerenEdge key under its heading
+(`SLURM-1` … `SLURM-53`). Human-only tasks:
+
+| Key | Task | Milestone |
+|---|---|---|
+| `SLURM-10` | Point the live cluster's deploy at `legacy/v1.4-tui` | Phase 1 |
+| `SLURM-37` | Approve the `cryptography` dependency for HF tokens | Phase 6 |
+| `SLURM-44` | Resize the login node VM and add swap | Phase 7 |
+| `SLURM-49` | Security review of deck-agent, the GPU-host helper and the session proxy | Phase 7 |
+| `SLURM-50` | Install the platform on the login node beside the TUI | Phase 7 |
+| `SLURM-53` | Run the cutover | Phase 7 |
+
 Phases 3 and 4 can run in parallel once 2 is merged. Each phase is one or more
 SerenEdge tasks; each task in a plan is one `task/<KEY>-<slug>` branch and one
 pull request into `dev`.
@@ -77,7 +89,8 @@ deploy/
                                stats writer, env specs, image defs)
 tests/
   core/  agent/  web/  gpuhost/  e2e/
-.github/workflows/ci.yml
+scripts/ci.sh  .serenedge/ci.json  .serenedge/review.json
+.github/workflows/ci.yml       (PRs into main only; serenedge ci runs locally)
 ```
 
 ---

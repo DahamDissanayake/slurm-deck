@@ -32,6 +32,8 @@
 
 ### Task 1: Ported env specs, image defs and `sdcore.envspec`
 
+**SerenEdge:** `SLURM-38`
+
 **Files:**
 - Create: `deploy/cluster/envs/*.yml`, `deploy/cluster/images/*.def`, `src/sdcore/envspec.py`, `tests/core/test_envspec.py`
 - Source: `legacy/v1.4-tui:envs/specs/*.yml`, `deploy/images/*.def`, `slurmdeck/setup.py` (`_parse_spec_pip_deps`, `_verify_spec_packages`), `slurmdeck/envbuilder.py` (`_smoke_check_pytorch`), `tests/test_prebuilt_envs.py`.
@@ -46,6 +48,8 @@
 ---
 
 ### Task 2: Environments — agent verbs, API, page
+
+**SerenEdge:** `SLURM-39`
 
 **Files:**
 - Create: `src/deckagent/verbs/envs.py`, `src/sdweb/envs/__init__.py`, `src/sdweb/envs/routes.py`, `src/sdweb/migrations/versions/0006_envs.py`, `frontend/src/pages/Environments.tsx`, `frontend/src/api/envs.ts`, tests: `tests/agent/test_verbs_envs.py`, `tests/web/test_envs_api.py`, `frontend/src/pages/Environments.test.tsx`
@@ -65,6 +69,8 @@
 ---
 
 ### Task 3: Models — HF downloads as jobs, token storage, page
+
+**SerenEdge:** `SLURM-40`
 
 **Files:**
 - Create: `src/sdcore/hfdownload.py`, `src/sdweb/modelslib/__init__.py`, `src/sdweb/modelslib/routes.py`, `src/sdweb/modelslib/tokens.py`, `src/sdweb/migrations/versions/0007_models.py`, `frontend/src/pages/Models.tsx`, tests: `tests/core/test_hfdownload.py`, `tests/web/test_models_api.py`
@@ -86,6 +92,8 @@
 
 ### Task 4: Usage — personal and cluster
 
+**SerenEdge:** `SLURM-41`
+
 **Files:**
 - Create: `src/deckagent/verbs/usage.py`, `src/sdcore/usage.py`, `src/sdweb/usage/__init__.py`, `src/sdweb/usage/routes.py`, `frontend/src/pages/Usage.tsx`, `frontend/src/pages/admin/UsageAdmin.tsx`, tests: `tests/core/test_usage.py`, `tests/agent/test_verbs_usage.py`
 - Source: `legacy/v1.4-tui:slurmdeck/accounting.py`.
@@ -105,6 +113,8 @@
 ---
 
 ### Task 5: Admin cluster control and shared assets
+
+**SerenEdge:** `SLURM-42`
 
 **Files:**
 - Create: `src/deckagent/verbs/admin.py`, `deploy/cluster/resize-pods.sh`, `src/sdweb/admin/__init__.py`, `src/sdweb/admin/routes.py`, `frontend/src/pages/admin/Cluster.tsx`, `frontend/src/pages/admin/SharedAssets.tsx`, `frontend/src/pages/admin/JobsAdmin.tsx`, tests: `tests/agent/test_verbs_admin.py`, `tests/web/test_admin_api.py`
@@ -127,6 +137,8 @@
 ---
 
 ### Task 6: Admin settings and monitoring, disk alerts
+
+**SerenEdge:** `SLURM-43`
 
 **Files:**
 - Create: `src/sdweb/admin/settings_routes.py`, `src/sdweb/admin/monitoring_routes.py`, `src/sdweb/worker/disk_task.py`, `frontend/src/pages/admin/Settings.tsx`, `frontend/src/pages/admin/Monitoring.tsx`, tests: `tests/web/test_admin_settings.py`, `tests/web/test_monitoring.py`, `tests/web/test_disk_alert.py`
