@@ -1,0 +1,4 @@
+# authorized_keys for sdprov on the GPU host. The key may only run the helper,
+# through sudo, with no shell, forwarding or pty. The real key line is written by
+# the installer; this is the shape.
+restrict,command="sudo /usr/local/sbin/sd-gpu-helper" ssh-ed25519 AAAA... deck-agent
