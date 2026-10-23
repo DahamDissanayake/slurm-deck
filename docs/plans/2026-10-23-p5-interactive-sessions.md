@@ -30,6 +30,8 @@
 
 ### Task 1: Session job renderers
 
+**SerenEdge:** `SLURM-32`
+
 **Files:**
 - Modify: `src/sdcore/sbatch.py`, `tests/core/test_sbatch.py`
 - Create: `src/sdcore/tbguard.py`, `tests/core/test_tbguard.py`
@@ -66,6 +68,8 @@
 
 ### Task 2: deck-agent session verb and submit support
 
+**SerenEdge:** `SLURM-33`
+
 **Files:**
 - Modify: `src/deckagent/verbs/jobs.py` (`job.submit` accepts `extra_files: {"tbguard.py": <sdcore.tbguard source>}` limited to that one allowed name, written next to `job.sbatch`), `tests/agent/test_verbs_jobs.py`
 - Create: `tests/agent/test_session_info.py`
@@ -81,6 +85,8 @@
 
 ### Task 3: Interactive intents in the jobs service
 
+**SerenEdge:** `SLURM-34`
+
 **Files:**
 - Modify: `src/sdweb/jobs/service.py`, `src/sdweb/jobs/routes.py`, `tests/web/test_jobs_api.py`
 
@@ -95,6 +101,8 @@
 ---
 
 ### Task 4: Authenticated reverse proxy
+
+**SerenEdge:** `SLURM-35`
 
 **Files:**
 - Create: `src/sdweb/proxy/__init__.py`, `src/sdweb/proxy/routes.py`, `src/sdweb/proxy/targets.py`, `src/sdweb/proxy/pages.py`, `tests/web/test_proxy.py`
@@ -127,6 +135,8 @@
 ---
 
 ### Task 5: Frontend — Open, terminal tab, Services page
+
+**SerenEdge:** `SLURM-36`
 
 **Files:**
 - Create: `frontend/src/pages/Terminal.tsx` (route `/sessions/terminal/:jobId`; connects to `/terminal/<id>/terminals/websocket/<name>` through the proxy), `frontend/src/api/sessions.ts`, `frontend/src/pages/Services.tsx`, `frontend/src/components/StartTensorBoard.tsx`, tests alongside.
