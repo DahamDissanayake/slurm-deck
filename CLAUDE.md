@@ -15,15 +15,18 @@ normal users and admins. Read it before working on anything web-related.
 
 ## Branches
 
-- **`main`**: release branch, and what the live cluster deploys from
-  (`deploy/redeploy-slurm-deck.sh` fast-forwards `/opt/slurm-deck` to it).
-  Never commit to it directly. It changes only when `dev` is merged into it at
-  a release point.
+- **`main`**: release branch for the new web platform. Never commit to it
+  directly. It changes only when `dev` is merged into it at a release point.
 - **`dev`**: the integration branch where day-to-day work lands.
 - **Task and issue branches**: every change gets its own short-lived branch off
   `dev`, merged back into `dev` by pull request, then deleted.
   - Task work: `task/<KEY>-<short-slug>`, e.g. `task/PROJ-42-add-due-dates`
   - Bug or issue work: `issue/<KEY>-<short-slug>`, e.g. `issue/PROJ-57-login-error`
+- **`legacy/v1.4-tui`**: the previous SSH TUI codebase (v1.4), kept whole.
+  The live cluster deploys from it until the web platform replaces it. Only
+  critical fixes to the running TUI go there, and never new web work. Old
+  specs, plans and dev-logs (M01–M05) also live there and are useful reference
+  for the Slurm, storage and permission details the new platform reuses.
 
 ```
 main  ◄── release merge ──  dev  ◄── PR ──  task/PROJ-42-add-due-dates
@@ -42,19 +45,15 @@ main  ◄── release merge ──  dev  ◄── PR ──  task/PROJ-42-add
 4. Never commit secrets or a `.env` file. Site config (`deploy/site.env`) and
    secrets (`deploy/secrets.env`) are gitignored; use the `.example` files as
    templates.
-5. Don't add new frameworks or dependencies without asking first. Runtime
-   Python dependencies are listed in `requirements.txt` (the single source of
-   truth, checked by `tests/test_dependencies.py`).
+5. Don't add new frameworks or dependencies without asking first.
 6. Keep changes small and tied to one task.
 
 ## Working notes
 
-- Run the tests on Linux. The suite imports `grp`/`fcntl`, and on a Windows
-  checkout with `core.autocrlf=true` the shell scripts get CRLF line endings,
-  which breaks `set -o pipefail`. In Docker: copy the repo in, strip `\r` from
-  the files, `pip install -r requirements.txt pytest tzdata`, and run
-  `python -m pytest -q` as a non-root user. Daemon permission tests pass for
-  the wrong reason when run as root.
-- Nothing site-specific is hardcoded in `slurmdeck/` (IPs, hostnames, ports,
-  timezone). Those values come from `deploy/site.env` via `slurmdeck/config.py`.
-  `tests/test_no_hardcoded_site_values.py` enforces this.
+- The platform targets Linux (the login node). Run tests on Linux or in a
+  Linux container. On a Windows checkout with `core.autocrlf=true`, shell
+  scripts get CRLF line endings, which breaks bash (`set -o pipefail` fails),
+  so strip `\r` before running them there.
+- Nothing site-specific is hardcoded: IPs, hostnames, ports, email domains and
+  timezone come from configuration or the admin panel, so other sites can run
+  this as open source.
