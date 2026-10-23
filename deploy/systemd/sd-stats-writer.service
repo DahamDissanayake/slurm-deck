@@ -1,0 +1,20 @@
+[Unit]
+Description=Slurm Deck stats writer (live GPU/CPU/RAM for the dashboard)
+After=network-online.target remote-fs.target
+
+[Service]
+Type=simple
+User=sd-stats
+Group=sd-stats
+Environment=NFS_ROOT=/shared
+EnvironmentFile=-/etc/slurm-deck-web/site.env
+ExecStart=/usr/local/bin/sd-stats-writer
+Restart=always
+RestartSec=2
+NoNewPrivileges=yes
+ProtectSystem=full
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target
