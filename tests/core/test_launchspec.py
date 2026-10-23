@@ -75,8 +75,9 @@ def test_default_specs_per_intent():
         ls = default_spec(intent, stats)
         assert (ls.intent, ls.gpu_shards, ls.time_limit) == (intent, 1, "08:00:00")
     assert default_spec("batch", stats, default_time="04:00:00").time_limit == "04:00:00"
-    smoke = default_spec("smoke", stats)
-    assert (smoke.gpu_shards, smoke.time_limit) == (1, "00:10:00")
+    smoke = default_spec("smoke", stats)     # fixed, like render_smoke: 1 pod, 4 CPU, 8 GB
+    assert (smoke.gpu_shards, smoke.cpus, smoke.mem_gb, smoke.time_limit) == (
+        1, 4, 8, "00:30:00")
 
 
 def test_apply_pods_then_change_pods_updates_sizing():

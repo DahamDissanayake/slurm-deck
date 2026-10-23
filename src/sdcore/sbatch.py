@@ -7,6 +7,9 @@ render_sbatch, pip_install_block). Changes from legacy:
 - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True when the job has a GPU pod;
 - every path and value placed in shell code is shlex-quoted, and #SBATCH values
   that could add a directive (whitespace, control characters) are refused.
+
+Also the smoke-test job (render_smoke / parse_smoke), ported from legacy
+slurmdeck/setup.py::_build_smoke_test_script.
 """
 
 from __future__ import annotations
@@ -16,6 +19,9 @@ import shlex
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import PurePosixPath
+from typing import Literal
+
+EnvKind = Literal["prebuilt", "conda", "venv", "container", "none"]
 
 
 @dataclass
@@ -41,6 +47,36 @@ class JobSpec:
     mail_user: str = ""        # job mail goes here when set
 
 
+@dataclass(frozen=True)
+class EnvChoice:
+    """The environment a job runs in, as the web app sends it.
+
+    prebuilt and conda both activate a conda env at `path`; venv sources
+    `path`/bin/activate; container runs inside the `path` image; none runs as is.
+    """
+
+    kind: EnvKind
+    path: str
+
+    @classmethod
+    def from_fields(cls, conda_env: str, venv_path: str, container_image: str) -> EnvChoice:
+        if container_image:
+            return cls("container", container_image)
+        if conda_env:
+            return cls("conda", conda_env)
+        if venv_path:
+            return cls("venv", venv_path)
+        return cls("none", "")
+
+    def as_fields(self) -> dict[str, str]:
+        """The JobSpec/LaunchSpec fields this choice maps back to."""
+        return {
+            "conda_env": self.path if self.kind in ("prebuilt", "conda") else "",
+            "venv_path": self.path if self.kind == "venv" else "",
+            "container_image": self.path if self.kind == "container" else "",
+        }
+
+
 def gres_directive(gpu_shards: int) -> str:
     """The --gres value for a pod request, or "" when the job needs no GPU."""
     return f"shard:{gpu_shards}" if gpu_shards > 0 else ""
@@ -48,6 +84,18 @@ def gres_directive(gpu_shards: int) -> str:
 
 def job_folder_name(job_name: str, now: datetime) -> str:
     return f"{job_name}_{now:%Y%m%d_%H%M%S}"
+
+
+def run_command_for(script: str, args: str) -> str:
+    """The shell command that runs a user's script with their arguments.
+
+    The path is one quoted word whatever it contains. args are split the way a
+    shell would split them, then each word is quoted, so they can't run
+    anything; unbalanced quotes raise ValueError.
+    """
+    interpreter = "bash" if script.endswith(".sh") else "python3"
+    words = [interpreter, script, *shlex.split(args)]
+    return " ".join(shlex.quote(w) for w in words)
 
 
 _UNSAFE_DIRECTIVE = re.compile(r"[\s\x00-\x1f\x7f]")
@@ -77,6 +125,35 @@ def pip_install_block(requirements: str, packages: str) -> str:
         '    || { echo "Dependency install FAILED - see pip output above." >&2; exit 1; }\n'
         'export PATH="$HOME/.local/bin:$PATH"\n'
     )
+
+
+def _clean_env(home: str, user: str, gpu: bool) -> list[str]:
+    """Start clean: nothing from the submitting process leaks into the job."""
+    lines = [
+        "#SBATCH --export=NONE",
+        "",
+        f"export HOME={shlex.quote(home)}",
+        f"export USER={shlex.quote(user)}",
+        "export PATH=/usr/local/bin:/usr/bin:/bin",
+    ]
+    if gpu:
+        # Pods share one GPU; expandable segments cut fragmentation-driven OOMs.
+        lines.append("export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True")
+    return lines + [""]
+
+
+def _activate(env: EnvChoice, nfs_root: str) -> list[str]:
+    """Activation lines for a conda or venv environment; none for the others."""
+    q = shlex.quote
+    if env.kind in ("prebuilt", "conda"):
+        # conda.sh must be sourced in a non-interactive shell, or `conda
+        # activate` fails quietly and the job runs in the base environment.
+        conda_sh = f"{nfs_root.rstrip('/')}/miniforge3/etc/profile.d/conda.sh"
+        return [f"[ -f {q(conda_sh)} ] && source {q(conda_sh)}",
+                f"conda activate {q(env.path)}", ""]
+    if env.kind == "venv":
+        return [f"source {q(env.path + '/bin/activate')}", ""]
+    return []
 
 
 def render_batch(spec: JobSpec, folder: str, home: str, mail_types: str, *,
@@ -111,17 +188,8 @@ def render_batch(spec: JobSpec, folder: str, home: str, mail_types: str, *,
         _directive("output", f"{folder}/{log}.out"),
         _directive("error", f"{folder}/{log}.err"),
         _directive("chdir", folder),
-        # Start clean: nothing from the submitting process leaks into the job.
-        "#SBATCH --export=NONE",
-        "",
-        f"export HOME={q(home)}",
-        f"export USER={q(spec.user)}",
-        "export PATH=/usr/local/bin:/usr/bin:/bin",
+        *_clean_env(home, spec.user, spec.gpu_shards > 0),
     ]
-    if spec.gpu_shards > 0:
-        # Pods share one GPU; expandable segments cut fragmentation-driven OOMs.
-        lines.append("export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True")
-    lines.append("")
 
     for mod in spec.modules:
         lines.append(f"module load {q(mod)}")
@@ -134,17 +202,7 @@ def render_batch(spec: JobSpec, folder: str, home: str, mail_types: str, *,
                      f"bash -lc {q(spec.run_command)}")
         return "\n".join(lines) + "\n"
 
-    if spec.conda_env:
-        # conda.sh must be sourced in a non-interactive shell, or `conda
-        # activate` fails quietly and the job runs in the base environment.
-        conda_sh = f"{nfs_root.rstrip('/')}/miniforge3/etc/profile.d/conda.sh"
-        lines += [
-            f"[ -f {q(conda_sh)} ] && source {q(conda_sh)}",
-            f"conda activate {q(spec.conda_env)}",
-            "",
-        ]
-    elif spec.venv_path:
-        lines += [f"source {q(spec.venv_path + '/bin/activate')}", ""]
+    lines += _activate(EnvChoice.from_fields(spec.conda_env, spec.venv_path, ""), nfs_root)
 
     if spec.model_path:
         lines += [f"export MODEL_PATH={q(spec.model_path)}",
@@ -155,3 +213,68 @@ def render_batch(spec: JobSpec, folder: str, home: str, mail_types: str, *,
     lines.append(f"cd {q(folder)}")
     lines.append(spec.run_command)
     return "\n".join(lines) + "\n"
+
+
+# ── Smoke test ───────────────────────────────────────────────────────────────
+
+SMOKE_CPUS = 4
+SMOKE_MEM_GB = 8
+SMOKE_TIME = "00:30:00"
+
+_TORCH_CHECK = """python3 - <<'PYEOF'
+try:
+    import torch
+except ImportError:
+    print("SMOKE torch-cuda=skipped")
+else:
+    print("SMOKE torch-cuda=" + ("ok" if torch.cuda.is_available() else "fail"))
+PYEOF"""
+
+
+def render_smoke(user: str, folder: str, home: str, env: EnvChoice, partition: str, *,
+                 nfs_root: str = "/shared") -> str:
+    """A tiny one-pod job that checks the GPU, CUDA from the chosen environment
+    and the user's folders, printing one `SMOKE <check>=ok|fail|skipped` line each."""
+    q = shlex.quote
+    lines = [
+        "#!/bin/bash",
+        _directive("job-name", PurePosixPath(folder).name),
+        _directive("partition", partition),
+        _directive("gres", gres_directive(1)),
+        _directive("cpus-per-task", SMOKE_CPUS),
+        _directive("mem", f"{SMOKE_MEM_GB}G"),
+        _directive("time", SMOKE_TIME),
+        _directive("output", f"{folder}/slurm-%j.out"),
+        _directive("error", f"{folder}/slurm-%j.err"),
+        _directive("chdir", folder),
+        *_clean_env(home, user, gpu=True),
+        "if nvidia-smi; then echo 'SMOKE nvidia-smi=ok'; else echo 'SMOKE nvidia-smi=fail'; fi",
+        "",
+    ]
+    if env.kind == "container":
+        lines.append(f"apptainer exec --nv --bind {q(nfs_root)} {q(env.path)} {_TORCH_CHECK}")
+    else:
+        lines += _activate(env, nfs_root)
+        lines.append(_TORCH_CHECK)
+    lines += [
+        "",
+        f'if [ -d "$HOME" ] && [ -w "$HOME" ] && touch {q(folder + "/.smoke")} '
+        f'&& rm -f {q(folder + "/.smoke")}; then',
+        "    echo 'SMOKE user-folder=ok'",
+        "else",
+        "    echo 'SMOKE user-folder=fail'",
+        "fi",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+_SMOKE_LINE = re.compile(r"^SMOKE ([a-z-]+)=(ok|fail|skipped)$")
+
+
+def parse_smoke(out_text: str) -> dict[str, str]:
+    """{check: result} from the smoke job's output."""
+    results = {}
+    for line in out_text.splitlines():
+        if m := _SMOKE_LINE.match(line.strip()):
+            results[m.group(1)] = m.group(2)
+    return results
