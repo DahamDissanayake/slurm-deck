@@ -30,94 +30,48 @@ from sdcore.validate import (
     validate_sbatch,
 )
 
-# ── clamp_int ────────────────────────────────────────────────────────────────
+# ── clamp_int / clean_time_limit / parse_hms ─────────────────────────────────
 
 
-def test_clamp_int_within_range():
-    assert clamp_int("5", 1, 10, 3) == 5
+@pytest.mark.parametrize("value, expected", [("5", 5), (99, 10), (-4, 1), ("abc", 3), (None, 3)])
+def test_clamp_int(value, expected):
+    assert clamp_int(value, 1, 10, 3) == expected
 
 
-def test_clamp_int_caps_high():
-    assert clamp_int(99, 1, 10, 3) == 10
-
-
-def test_clamp_int_floors_low():
-    assert clamp_int(-4, 1, 10, 3) == 1
-
-
-def test_clamp_int_uses_default_on_bad_type():
-    assert clamp_int("abc", 1, 10, 3) == 3
-    assert clamp_int(None, 1, 10, 3) == 3
-
-
-# ── clean_time_limit / parse_hms ─────────────────────────────────────────────
-
-
-def test_clean_time_limit_valid():
-    assert clean_time_limit("12:30:00", max_hours=72) == "12:30:00"
-
-
-def test_clean_time_limit_clamps_over_max():
-    assert clean_time_limit("999:00:00", max_hours=72) == "72:00:00"
-
-
-def test_clean_time_limit_caps_to_given_max():
-    assert clean_time_limit("30:00:00", max_hours=24) == "24:00:00"
-
-
-def test_clean_time_limit_caps_minutes_past_the_max_hour():
-    # Legacy compared hours only, so 24:30:00 slipped past a 24 h cap.
-    assert clean_time_limit("24:30:00", max_hours=24) == "24:00:00"
-    assert clean_time_limit("24:00:00", max_hours=24) == "24:00:00"
-
-
-def test_clean_time_limit_pads_hours():
-    assert clean_time_limit("1:05:00", max_hours=24) == "01:05:00"
-
-
-def test_clean_time_limit_rejects_garbage():
-    assert clean_time_limit("not-a-time", max_hours=72) is None
-
-
-def test_clean_time_limit_rejects_bad_minutes():
-    assert clean_time_limit("01:99:00", max_hours=72) is None
+@pytest.mark.parametrize("value, max_hours, expected", [
+    ("12:30:00", 72, "12:30:00"),
+    ("999:00:00", 72, "72:00:00"),
+    ("30:00:00", 24, "24:00:00"),   # caps to the given max
+    ("24:30:00", 24, "24:00:00"),   # legacy compared hours only and let this through
+    ("24:00:00", 24, "24:00:00"),
+    ("1:05:00", 24, "01:05:00"),
+    ("not-a-time", 72, None),
+    ("01:99:00", 72, None),
+])
+def test_clean_time_limit(value, max_hours, expected):
+    assert clean_time_limit(value, max_hours=max_hours) == expected
 
 
 def test_parse_hms():
     assert parse_hms("01:02:03") == 3723
     assert parse_hms(" 100:00:00 ") == 360000
-    assert parse_hms("01:60:00") is None
-    assert parse_hms("1-00:00:00") is None
-    assert parse_hms("") is None
+    for bad in ("01:60:00", "1-00:00:00", ""):
+        assert parse_hms(bad) is None
 
 
 # ── clean_job_name / clean_run_command / clean_modules ───────────────────────
 
 
-def test_clean_job_name_strips_bad_chars():
+def test_clean_job_name():
     assert clean_job_name("my job!@#") == "myjob"
-
-
-def test_clean_job_name_allows_safe_chars():
     assert clean_job_name("train_v1.2-run") == "train_v1.2-run"
-
-
-def test_clean_job_name_truncates_at_64():
     assert len(clean_job_name("a" * 100)) == 64
 
 
-def test_clean_run_command_removes_newlines():
-    result = clean_run_command("python train.py\nrm -rf /")
-    assert "\n" not in result
-
-
-def test_clean_run_command_removes_control_chars():
+def test_clean_run_command():
+    assert "\n" not in clean_run_command("python train.py\nrm -rf /")
     result = clean_run_command("python\x00train.py\x1b[31m")
-    assert "\x00" not in result
-    assert "\x1b" not in result
-
-
-def test_clean_run_command_truncates_at_1000():
+    assert "\x00" not in result and "\x1b" not in result
     assert len(clean_run_command("x" * 2000)) == 1000
 
 
@@ -271,25 +225,6 @@ python train.py
     assert _v(script, tmp_path) == []
 
 
-def test_validate_sbatch_rejects_output_outside_jail(tmp_path):
-    _user_dir(tmp_path)
-    errors = _v("#SBATCH --output=/etc/malicious.out\n", tmp_path)
-    assert any("--output" in e for e in errors)
-
-
-def test_validate_sbatch_rejects_chdir_outside_jail(tmp_path):
-    _user_dir(tmp_path)
-    errors = _v("#SBATCH --chdir=/etc\n", tmp_path)
-    assert any("--chdir" in e for e in errors)
-
-
-def test_validate_sbatch_rejects_cross_user_output(tmp_path):
-    _user_dir(tmp_path, "alice")
-    bob = _user_dir(tmp_path, "bob")
-    errors = _v(f"#SBATCH --output={bob}/stolen.out\n", tmp_path, username="alice")
-    assert any("--output" in e for e in errors)
-
-
 def test_validate_sbatch_accepts_user_job_dir(tmp_path):
     _user_dir(tmp_path, "alice")
     jd = _job_dir(tmp_path, "alice") / "train_123"
@@ -303,74 +238,38 @@ def test_validate_sbatch_accepts_user_job_dir(tmp_path):
     assert _v(script, tmp_path) == []
 
 
-def test_validate_sbatch_rejects_cross_user_job_dir(tmp_path):
-    _job_dir(tmp_path, "alice")
-    bob = _job_dir(tmp_path, "bob") / "train_x"
-    bob.mkdir(parents=True, exist_ok=True)
-    errors = _v(f"#SBATCH --chdir={bob}\n", tmp_path, username="alice")
-    assert any("--chdir" in e for e in errors)
-
-
-def test_validate_sbatch_multiflag_bypass_blocked(tmp_path):
-    _user_dir(tmp_path)
-    errors = _v("#SBATCH --nice=100 --output=/etc/cron.d/evil\n", tmp_path)
-    assert any("--output" in e for e in errors)
-
-
-def test_validate_sbatch_multiflag_uid_blocked(tmp_path):
-    _user_dir(tmp_path)
-    errors = _v("#SBATCH --job-name=ok --uid=0\n", tmp_path)
-    assert any("--uid" in e for e in errors)
-
-
-def test_validate_sbatch_rejects_uid_directive(tmp_path):
-    _user_dir(tmp_path)
-    assert any("--uid" in e for e in _v("#SBATCH --uid=0\n", tmp_path))
-
-
-def test_validate_sbatch_rejects_gid_directive(tmp_path):
-    _user_dir(tmp_path)
-    assert any("--gid" in e for e in _v("#SBATCH --gid=0\n", tmp_path))
-
-
-def test_validate_sbatch_rejects_get_user_env(tmp_path):
-    _user_dir(tmp_path)
-    assert any("--get-user-env" in e for e in _v("#SBATCH --get-user-env\n", tmp_path))
-
-
-def test_validate_sbatch_mail_user_fail_closed_without_registered_email(tmp_path):
-    _user_dir(tmp_path)
-    errors = _v("#SBATCH --mail-user=attacker@evil.com\n", tmp_path, email=None)
-    assert any("mail-user" in e for e in errors)
-
-
 def test_validate_sbatch_mail_user_own_address_ok(tmp_path):
     _user_dir(tmp_path)
-    errors = _v("#SBATCH --mail-user=Alice@IIT.lk\n", tmp_path, email="alice@iit.lk")
-    assert errors == []
+    assert _v("#SBATCH --mail-user=Alice@IIT.lk\n", tmp_path, email="alice@iit.lk") == []
 
 
-def test_validate_sbatch_mail_user_foreign_rejected(tmp_path):
+# {root} is the test's shared root; bob's areas exist so only the jail refuses them.
+@pytest.mark.parametrize("line, limits, expected", [
+    ("--output=/etc/malicious.out", {}, "--output"),
+    ("--chdir=/etc", {}, "--chdir"),
+    ("--output={root}/users/bob/stolen.out", {}, "--output"),      # another user's area
+    ("--chdir={root}/jobs/bob/train_x", {}, "--chdir"),            # another user's jobs
+    ("--nice=100 --output=/etc/cron.d/evil", {}, "--output"),      # hidden after a benign flag
+    ("--job-name=ok --uid=0", {}, "--uid"),
+    ("--uid=0", {}, "--uid"),
+    ("--gid=0", {}, "--gid"),
+    ("--get-user-env", {}, "--get-user-env"),
+    ("--mail-user=attacker@evil.com", {"email": None}, "mail-user"),  # fail closed
+    ("--mail-user=someone@else.com", {}, "mail-user"),
+    ("--gres=gpu:8", {"max_gpus": 2}, "GPU"),
+    ("--cpus-per-task=32", {"max_cpus": 4}, "--cpus-per-task"),
+    ("--mem=2T", {"max_mem_gb": 256}, "--mem"),
+])
+def test_validate_sbatch_rejects(tmp_path, line, limits, expected):
+    _user_dir(tmp_path, "alice")
+    _user_dir(tmp_path, "bob")
+    (_job_dir(tmp_path, "bob") / "train_x").mkdir()
+    errors = _v("#SBATCH " + line.format(root=tmp_path) + "\n", tmp_path, **limits)
+    assert any(expected in e for e in errors), errors
+
+
+def test_validate_sbatch_mem_in_megabytes(tmp_path):
     _user_dir(tmp_path)
-    errors = _v("#SBATCH --mail-user=someone@else.com\n", tmp_path, email="alice@iit.lk")
-    assert any("mail-user" in e for e in errors)
-
-
-def test_validate_sbatch_rejects_excess_gpus(tmp_path):
-    _user_dir(tmp_path)
-    errors = _v("#SBATCH --gres=gpu:8\n", tmp_path, max_gpus=2)
-    assert any("GPU" in e for e in errors)
-
-
-def test_validate_sbatch_rejects_excess_cpus(tmp_path):
-    _user_dir(tmp_path)
-    errors = _v("#SBATCH --cpus-per-task=32\n", tmp_path, max_cpus=4)
-    assert any("cpus" in e.lower() for e in errors)
-
-
-def test_validate_sbatch_rejects_excess_mem(tmp_path):
-    _user_dir(tmp_path)
-    assert any("--mem" in e for e in _v("#SBATCH --mem=2T\n", tmp_path, max_mem_gb=256))
     assert _v("#SBATCH --mem=16384\n", tmp_path, max_mem_gb=16) == []
 
 
