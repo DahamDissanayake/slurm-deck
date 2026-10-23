@@ -1,10 +1,12 @@
 # Slurm Deck Web — Full Design
 
-**Status:** draft for approval
+**Status:** approved by the project owner, 2026-10-23
 **Date:** 2026-10-23
 **Replaces:** the SSH ForceCommand TUI as the access path for normal users and
-admins. Supersedes §1–4 of `2026-08-04-v1.5.0-full-design.md` (web UI), which
-assumed PAM logins against real Linux accounts — this design does not.
+admins. Supersedes §1–4 of the v1.5.0 design (web UI), which assumed PAM
+logins against real Linux accounts — this design does not. That older spec,
+and every other v1.4 document, lives on the `legacy/v1.4-tui` branch
+(`docs/specs/2026-08-04-v1.5.0-full-design.md` there).
 
 Calls marked **[builder's call]** or **[my call]** were not decided by the
 project owner; everything else was.
@@ -69,7 +71,7 @@ long, and never sees a terminal, a token, or a tunnel command.
   files and Slurm fair-share must survive the move to the web.
 - **Any web user able to read another user's files, notebooks, or logs.**
 - **A web-app compromise that hands out root** on the GPU host or NFS server.
-- **Shell users disrupted** by the change.
+- **Shell users disrupted** by the change (beyond losing Docker, §10.2).
 - Students losing their existing `/shared/users/<name>` work.
 
 ---
@@ -90,11 +92,35 @@ ConstrainRAMSpace / ConstrainDevices on, priority/multifactor (fairshare 100000,
 QoS 10000, age 1000), backfill. Every user has the `default` account and
 `normal` QoS.
 
-The `slurmdeck/` Python package already separates much of its logic from the
-TUI: `launchspec.py`, `pods.py`, `jobs.py` (sbatch rendering), `slurm.py`,
-`validate.py`, `connect.py` are reusable as a service layer. Presentation-mixed
-modules (`dashboard.py`, `review.py`, `admin.py`, `wizard.py`) need their
-"compute the data" half split from their "render with Rich" half.
+### Where the existing code is
+
+`main` and `dev` start empty apart from this design. The whole v1.4 codebase,
+with its history, tests and docs, is on the **`legacy/v1.4-tui`** branch, and
+the live cluster keeps running it from there until cutover (§12). Wherever this
+document says "reuse X", it means **bring X over from `legacy/v1.4-tui` into
+the new codebase, with its tests**, not import it from a running install.
+
+**[my call] Port, don't rewrite, the parts that are already pure logic and
+proven on this cluster.** Fix the defects the 2026-10-23 audit found while
+porting them:
+
+| From `legacy/v1.4-tui` | Used for |
+|---|---|
+| `slurmdeck/launchspec.py`, `pods.py` | job intent defaults, pod → CPU/RAM sizing |
+| `slurmdeck/jobs.py` (`render_sbatch`, `render_notebook_sbatch`, `render_tensorboard_sbatch`, readiness-marker and free-port snippets) | generating job scripts (with the §6.4 fixes) |
+| `slurmdeck/slurm.py` (squeue/sacct/scontrol parsing) | deck-agent's Slurm reads |
+| `slurmdeck/validate.py` (jails, time/name/arg cleaning, QoS checks) | input validation in `web` and deck-agent |
+| `slurmdeck/connect.py` | notebook readiness and node/port/token parsing |
+| `slurmdeck/upload.py` (zip extraction safety), `setup.py` (post-install package verification), `envbuilder.py` | extraction and env builds |
+| `envs/specs/*.yml`, `deploy/images/*.def` | prebuilt envs and Apptainer images (add the §6.7 version bounds) |
+| `deploy/resize-pods.sh` | pod resize |
+| `deploy/slurm-deck-mailer` | Slurm job BEGIN/END/FAIL email (MailProg), with HTML escaping |
+| `deploy/slurm-deck-stats-writer` + `.service` | the GPU-host stats file the dashboard reads (run as a dedicated service account, §10.8) |
+| `deploy/slurm-deck-adduser.sh` / `deluser.sh` | logic for the GPU-host helper (with strict username checks and no `docker`) |
+
+The Rich/questionary presentation modules (`menu.py`, `wizard.py`,
+`review.py`, `dashboard.py`, `admin.py`, `ui.py`, `splash.py`) are **not**
+ported; their behaviour is the reference for what the web screens must do.
 
 ---
 
@@ -107,7 +133,7 @@ modules (`dashboard.py`, `review.py`, `admin.py`, `wizard.py`) need their
  browser ──HTTPS:443──▶ port-forward 443 ─▶ login-node VM (192.168.122.10)
                                              ├─ Docker Compose (installed and managed
                                              │  by slurmadmin; containers run as the
-                                             │  unprivileged `sdweb` account):
+                                             │  unprivileged `sdweb`/`sdworker` accounts):
                                              │    caddy, web, worker, db
                                              │        │ Unix socket, fixed verbs
                                              │        ▼
@@ -125,8 +151,9 @@ modules (`dashboard.py`, `review.py`, `admin.py`, `wizard.py`) need their
 the login node as the host. There is no separate web VM.
 
 **Decided: slurmadmin installs and manages it (option 1).** The code lives
-under slurmadmin's install directory (e.g. `/opt/slurm-deck`, owned by
-slurmadmin), and slurmadmin runs the installer, upgrades, backups and
+under slurmadmin's install directory, **`/opt/slurm-deck-web`** **[my call]**,
+owned by slurmadmin. It must not be `/opt/slurm-deck`: that is the live v1.4
+TUI clone, which keeps running side by side until cutover (§12). slurmadmin and runs the installer, upgrades, backups and
 `docker compose` commands. **The running containers do not run as
 slurmadmin:** they run as a dedicated unprivileged service account, `sdweb`
 (nologin, no sudo, no Slurm association, not in `docker`/`gpuusers`/
@@ -201,7 +228,7 @@ total, so jobs are unaffected as long as the host keeps enough free.
 | **caddy** | container, `sdweb` | TLS, HTTP→HTTPS, reverse proxy to `web`, static assets, large-body pass-through for uploads |
 | **web** | container, `sdweb` | FastAPI app: REST + WebSocket API, auth, sessions, Jupyter/TensorBoard/terminal proxy, upload endpoint (streams chunks on to deck-agent), serves the frontend build |
 | **db** | container, `sdweb` | PostgreSQL: accounts, password hashes, sessions, applications, settings, job index, audit log |
-| **worker** | container, `sdweb` | background tasks: expiry warnings, notify-when-free, disk alerts, session cleanup, email outbox |
+| **worker** | container, `sdworker` | background tasks: expiry warnings, notify-when-free, disk alerts, session cleanup, email outbox |
 | **deck-agent** | systemd service, root | all Slurm, storage and account verbs (§4.3) |
 | **gpu-host helper** | forced-command script via SSH, on the GPU host | only the GPU-host steps listed in §4.1 |
 
@@ -219,7 +246,16 @@ service. Everything user-facing is containerised.
 ### 4.3 deck-agent (privilege boundary)
 
 - Listens on a **Unix socket** on the login node; accepts connections only
-  from the `sdweb` UID (socket mode + SO_PEERCRED).
+  from the `sdweb` UID (the `web` container) and the `sdworker` UID (the
+  `worker` container) — socket mode + SO_PEERCRED. **[my call]** The worker
+  runs as its own unprivileged account, `sdworker`, so deck-agent can tell the
+  two apart.
+- **Background tasks have no user session**, so the worker gets a separate,
+  narrow allowance: `sdworker` may call only read-only, cluster-wide verbs
+  (`cluster.status`, `cluster.queue`, `cluster.disk_free`, `job.time_left_all`)
+  that never act as a user and never touch file contents. Everything it then
+  sends (expiry warnings, notify-when-free, disk alerts) goes out as email
+  from the worker itself. It can never submit, cancel, extend or read files.
 - **Identity is not taken from `web` on faith.** Each request carries the
   user's raw session token. deck-agent hashes it and checks it against the
   sessions table through a **read-only** DB role to get the username and
@@ -239,7 +275,10 @@ service. Everything user-facing is containerised.
   `job.show`, `history`. Files: `fs.list`, `fs.stat`, `fs.read`,
   `fs.write_chunk`, `fs.finalize_upload`, `fs.mkdir`, `fs.rename`, `fs.delete`,
   `fs.extract`, `fs.download_stream`, `fs.free_space`, `joblog.read`.
-  Accounts: `account.create`, `account.disable`, `account.enable`,
+  Cluster (read-only, for any signed-in user and for the worker):
+  `cluster.status` (pods, GPU/CPU/RAM from the stats file and `scontrol`),
+  `cluster.queue` (who's running: username, state, pods, time only),
+  `cluster.disk_free`. Accounts: `account.create`, `account.disable`, `account.enable`,
   `account.delete`, `account.link_folder`. Admin: `admin.qos_*`,
   `admin.drain`, `admin.resume`, `admin.pods_resize`, `admin.service_status`,
   `admin.disk_usage`, `admin.publish_shared`.
@@ -254,6 +293,9 @@ service. Everything user-facing is containerised.
   admin), new total ≤ extension cap, new total ≤ partition MaxTime.
 - Admin verbs require the session's account to have the admin role, checked by
   deck-agent from the DB, not from `web`.
+- **View as user (§5.7):** an admin's session may name a target user; deck-agent
+  then acts as that target's UID, but only after confirming the session is an
+  admin's, and audits every call as "admin X acting as Y".
 - Every verb is written to the audit log (actor, target, verb, sanitised
   arguments, result) in a root-owned local log as well as the DB, so a
   compromised web stack cannot erase deck-agent's record.
@@ -335,7 +377,7 @@ old folder (§5.5) is the *only* way a UID is reused, and it requires admin
 confirmation.
 
 **Admin file access [my call].** Admins' hidden accounts are *not* in
-`gpuadmins`. Instead a dedicated service account, `sd-ops` (same UID on all
+`gpuadmins`. Instead a dedicated service account, `sd-ops` (same UID on
 both nodes, nologin, member of `gpuadmins`), is the identity deck-agent
 drops to for admin file verbs: reading any user's job logs, disk-usage scans,
 renaming to `.offboarded`, purge, and publishing into the shared read-only
@@ -448,10 +490,38 @@ time; every action taken is audited as "admin X acting as Y".
 
 Layout **[builder's call within these rules]**: left sidebar (Dashboard, New
 job, Jobs, Files, Environments, Models, Services, Usage, Notify, plus Admin for
-admins), top bar with cluster status line and account menu. Visual identity
-follows the v1.5.0 spec §1 "Visual design system" (tokens, monospace wordmark,
-cyan accent, double-ruled panels, dark/light with toggle, system fonts, no
-CDN fonts). Desktop-first; usable on a tablet; phone is view-only good enough.
+admins), top bar with cluster status line and account menu. Desktop-first; usable on a tablet; phone is view-only good enough.
+
+**Visual identity** (carried over from the v1.5.0 spec's design system, which
+extends the TUI splash screen's look rather than a generic SaaS style):
+
+- **Color tokens** as CSS custom properties, never hardcoded in components:
+
+  | Token | Dark | Light | Use |
+  |---|---|---|---|
+  | `--bg` | `#0A0E13` | `#F3F6F8` | page ground |
+  | `--surface` | `#12181F` | `#FFFFFF` | panels, cards |
+  | `--surface-2` | `#1A222C` | `#EEF2F5` | inputs, recessed areas |
+  | `--border` | `#26313D` | `#D7DEE5` | hairlines |
+  | `--text` | `#E7ECF1` | `#16202B` | primary text |
+  | `--text-dim` | `#7E8CA0` | `#5B6B7C` | secondary text, labels |
+  | `--accent` | `#3FD9E8` | `#0E93A3` | the product's cyan (deepened in light mode for contrast) |
+
+  Error and warning colors are separate tokens and never reuse `--accent`.
+- **Type:** system font stacks only, no CDN or web fonts (the LAN may have no
+  internet). Wordmark/display: `ui-monospace, "SF Mono", "Cascadia Code",
+  "JetBrains Mono", Consolas, "Roboto Mono", monospace`. UI text:
+  `-apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`.
+- **Dark/light:** dark is the default on `:root`; `prefers-color-scheme: light`
+  redefines the tokens; an in-app toggle (`:root[data-theme=...]`, remembered
+  in `localStorage`) overrides the OS either way.
+- **Motifs:** wordmark `> SLURM` in text color with `DECK` in accent; primary
+  containers use a double-ruled top border (the TUI's `box.DOUBLE_EDGE`). Every
+  screen reuses these; no per-screen visual language.
+- **Sign-in page:** wordmark, one-line tagline, the double-ruled panel with
+  email/password, "Forgot password", **Apply for access** (when the allow-list
+  is non-empty), the CA certificate download link (§4.1), and a footer with
+  product name, version, license and source link.
 
 ### 6.1 Home dashboard
 - **Cluster strip:** GPU pods in use / total (the colored pod blocks from the
@@ -476,11 +546,15 @@ Three steps, mirroring the TUI's intent → intake → hub flow:
 3. **Review & launch** — an editable summary, like the TUI's review hub:
    pods (stepper, with live availability and the VRAM-is-shared caveat with the
    estimated share), CPU/RAM shown (derived from pods via `pods.py`), time
-   limit (default **8 h**, up to the extension cap), email notifications
+   limit (default **8 h**; at submit time it can't exceed the QoS's max wall
+   time, which the old setup set to 8 h for `normal` — verify the live value;
+   going further is what Extend is for, up to the cap in §6.10), email notifications
    on/off, Advanced (job array, dependency on another job), "Save as
    template", and a **Preview script** toggle that shows the exact sbatch.
    Validation runs live (QoS limits, pod ceiling, time cap) with plain-language
-   errors before submit.
+   errors before submit. **[my call]** It also warns when the chosen
+   environment lacks a package the script imports (the `tensorboard` failure
+   in sanuth's slurm-152), as a warning, not a block.
 
 **Templates** are **per-user** (stored under the user's own area or in the DB
 keyed by user), not the current global 0666 directory. Built-in presets remain.
@@ -519,12 +593,14 @@ keyed by user), not the current global 0666 directory. Built-in presets remain.
   else's. This closes today's hole where any user could tunnel to anyone's
   TensorBoard.
 - **TensorBoard** also gets a token, proxied the same way.
-- **Terminal session** (replaces the TUI "shell" intent and the "Advanced
-  SLURM shell"): a job that runs a terminal server inside the Slurm allocation
+- **Terminal session [my call]** (replaces the TUI "shell" intent and the
+  "Advanced SLURM shell", keeping the "all TUI features" goal): a job that runs a terminal server inside the Slurm allocation
   on the GPU host, as the user, opened in a browser tab (xterm.js).
   **[builder's call]** which terminal server (e.g. ttyd, or JupyterLab's
   terminal-only mode). It is inside a Slurm allocation with cgroup limits, same
-  as a Jupyter terminal today — this is not a login-node shell.
+  as a Jupyter terminal today — this is not a login-node shell, so it doesn't
+  break "no commands on any node" outside a job. Admins can turn the terminal
+  job type off in Settings if they want users to have notebooks only.
 - Jupyter launch fixes from the `.err` analysis ship here:
   `--FileContentsManager.delete_to_trash=False` (fixes the `.Trash-N` 500s),
   explicit `websocket_ping_interval`/`websocket_ping_timeout` (fixes the 293×
@@ -672,7 +748,8 @@ with sysadmin accounts as today.
 ### 9.1 Recommended layout (answer to "run it in a container or suggest the best way")
 
 - **Docker Compose on the login node** for `caddy`, `web`, `worker`, `db`,
-  installed and managed by slurmadmin, containers running as `sdweb`.
+  installed and managed by slurmadmin, containers running as `sdweb`
+  (`worker` as `sdworker`).
 - **deck-agent** as a systemd service on the login node, plus the GPU-host
   helper script reached over restricted SSH (§4.2 explains why).
 - **Slurm, munge, NFS, GPU, slurmd, slurmctld, slurmdbd stay exactly where they
@@ -685,7 +762,7 @@ socket. No `/shared`, no munge key, no `/etc/shadow`, no Docker socket.
 ### 9.2 Install and upgrade
 - An installer step (extend the existing `install-wizard.sh` / `deploy/wizard`)
   that, run as slurmadmin on the login node: resizes nothing itself but checks
-  the login node meets the §4.1 sizing, creates `sdweb`, installs the Compose
+  the login node meets the §4.1 sizing, creates `sdweb` and `sdworker`, installs the Compose
   stack, deck-agent, the GPU-host helper and its SSH key, writes `site.env`
   (hostname, allow-list seed, timezone, cluster name, mail), creates the first admin account
   (prints a one-time set-password link), sets up the GPU-host port forward,
@@ -714,8 +791,7 @@ before it), because the web model depends on them:
 2. **Remove the `docker` group** from every account except sysadmins on both
    nodes — web users **and shell users** (decided: "lose Docker, only
    Apptainer"). This reverts commit 63b8cc6. Containers in jobs are Apptainer
-   only; `slurm-deck-adduser` stops adding `docker`.
-   (it is root-equivalent; containers for users are Apptainer only).
+   only; `slurm-deck-adduser` stops adding `docker` (it is root-equivalent).
 3. `/shared/envs`, `/shared/models`, `/shared/datasets`, `/shared/scripts`,
    `/shared/templates` become **admin-write, user-read** (today every
    `gpuusers` member can modify them — cross-user code execution).
@@ -738,29 +814,30 @@ live free VRAM on the review step and set
 
 ---
 
-## 11. Branches (decided)
+## 11. Branches and where work comes from (decided)
 
-- **`legacy-tui`**: created from the current `main` before any web work starts.
-  It preserves the whole TUI codebase exactly as it is today and is the
-  rollback reference. It only gets critical fixes while the TUI is still live
-  (e.g. the gateway bypass and docker-group fixes from the 2026-10-23 audit).
-- **`dev`**: all web-platform work happens here, through feature branches
-  that merge into `dev` after tests pass and review.
-- **`main`** stays clean: no work-in-progress ever lands on it. It changes
-  only when a finished, tested release is merged from `dev`.
-- **My reading [check this]:** `main` keeps the current TUI code until
-  cutover, because `deploy/redeploy-slurm-deck.sh` deploys the live cluster by
-  fast-forwarding `/opt/slurm-deck` to `main`. The web platform is merged into
-  `main` at cutover (§12 step 3), after which `main` is the web platform and
-  the TUI lives on only in `legacy-tui`.
-- `docs/specs/` and `docs/plans/` for the web platform live on `dev` and reach
-  `main` with the release.
+- **`legacy/v1.4-tui`**: the whole v1.4 TUI codebase with its history. The
+  live cluster deploys from it (`/opt/slurm-deck`) until cutover. It only gets
+  critical fixes to the running TUI (e.g. the gateway bypass and docker-group
+  fixes from the 2026-10-23 audit), never web work.
+- **`dev`**: the integration branch for the web platform. It started clean
+  (this design, `CLAUDE.md`, README, LICENSE).
+- **`main`**: the release branch. It changes only when `dev` is merged into it
+  at a release point, by pull request. It no longer feeds the live TUI.
+- **Work comes from SerenEdge.** Every change is a SerenEdge task or issue with
+  a key, built on `task/<KEY>-<short-slug>` or `issue/<KEY>-<short-slug>` off
+  `dev`, merged back by pull request, with commit messages `<KEY>: summary` and
+  no AI/agent attribution. `CLAUDE.md` holds the full rules.
+- Implementation plans for the web platform go in `docs/plans/` on `dev`.
 
 ---
 
 ## 12. Cutover (decided: start fresh, keep folders)
 
-1. Build and test the web platform alongside the TUI, with test accounts.
+1. Build and test the web platform alongside the TUI, with test accounts. The
+   web platform is installed from a `main` release into `/opt/slurm-deck-web`
+   and reached on 443; the TUI keeps running from `legacy/v1.4-tui` in
+   `/opt/slurm-deck` over SSH on 2225. Both share the same Slurm and `/shared`.
 2. Announce a cutover date (maintenance banner + email to current users).
 3. At cutover: disable ForceCommand logins; **delete the login-node accounts
    of all normal users and admins** (not shell users, not sysadmins); keep
@@ -771,7 +848,9 @@ live free VRAM on the review step and set
 5. Old job history is **not** imported into the dashboard; old job folders
    remain on disk for admins.
 6. Folders of people who never return stay put until an admin archives them.
-7. Rollback: re-enable ForceCommand and restore the removed accounts from a
+7. After a settling period, retire the TUI: remove `/opt/slurm-deck`, the
+   ForceCommand drop-in, the gateway wrapper and the old audit daemon.
+8. Rollback (before step 7): re-enable ForceCommand and restore the removed accounts from a
    pre-cutover `/etc/passwd`/`/etc/shadow`/`/etc/group` backup on both nodes
    (taken in step 3).
 
