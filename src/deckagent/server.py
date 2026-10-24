@@ -174,7 +174,7 @@ class _Handler(socketserver.BaseRequestHandler):
             body = error_body("timeout", "The request took too long to arrive.")
         except AgentError as e:
             status, ctype, result = e.status, "application/json", e.code
-            body = error_body(e.code, e.message)
+            body = error_body(e.code, e.message, e.data)
         except Exception:
             log.exception("unhandled error in deck-agent request")
             status, ctype, result = 500, "application/json", "internal"
@@ -240,7 +240,7 @@ class _Handler(socketserver.BaseRequestHandler):
 
         payload: Any = (read_json_body(reader.read(length)) if verb.body == "json"
                         else _Body(reader, length))
-        result = verb.handler(RequestContext(caller, config, headers), payload)
+        result = verb.handler(RequestContext(caller, config, headers, server.store), payload)
         return result if isinstance(result, RawResponse) else json_response(result)
 
 

@@ -52,6 +52,7 @@ def agent(tmp_path, monkeypatch):
     import deckagent.verbs.accounts  # noqa: F401  (registers the verbs)
     import deckagent.verbs.cluster  # noqa: F401
     import deckagent.verbs.files  # noqa: F401
+    import deckagent.verbs.jobs  # noqa: F401
     from deckagent.config import load_config
     from deckagent.protocol import AgentError, Caller
     from deckagent.server import AgentServer
