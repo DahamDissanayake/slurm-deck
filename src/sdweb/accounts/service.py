@@ -57,17 +57,18 @@ def email_taken(db: Session, email: str, except_id: int | None = None) -> bool:
 
 
 def send_link(db: Session, account: Account, purpose: str, settings: WebSettings,
-              now: datetime, mailer: Mailer) -> None:
+              now: datetime, mailer: Mailer, kind: str | None = None) -> None:
+    """Mail a one-time set or reset link (as mail kind, default <purpose>_password)."""
     raw = issue_password_token(db, account, purpose, settings, now)
     page = "set-password" if purpose == "set" else "reset-password"
-    mailer(db, to=account.email, kind=f"{purpose}_password",
+    mailer(db, to=account.email, kind=kind or f"{purpose}_password",
            context={"link": f"https://{settings.public_hostname}/{page}#token={raw}"})
 
 
 def create_account(db: Session, *, admin: Account, session: str, agent: Any, email: str,
                    full_name: str, username: str, role: str, reconnect_folder: bool,
                    attach_shell: bool, settings: WebSettings, now: datetime,
-                   mailer: Mailer) -> Account:
+                   mailer: Mailer, link_kind: str = "set_password") -> Account:
     """deck-agent first; the row only after it succeeds, so a failure leaves
     nothing behind and the same email and username can be tried again."""
     # Serialises creates of one username; released with the transaction.
@@ -96,7 +97,7 @@ def create_account(db: Session, *, admin: Account, session: str, agent: Any, ema
                       created_at=now)
     db.add(account)
     db.flush()
-    send_link(db, account, "set", settings, now, mailer)
+    send_link(db, account, "set", settings, now, mailer, kind=link_kind)
     others = db.scalars(select(Account).where(Account.role == "admin", Account.status == "active",
                                               Account.id != admin.id)).all()
     for other in others:
