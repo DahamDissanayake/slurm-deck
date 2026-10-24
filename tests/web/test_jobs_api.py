@@ -82,6 +82,13 @@ def test_defaults_say_whether_terminal_jobs_are_enabled(jobs_env):
             s.merge(Setting(key="terminal_jobs_enabled", value=True))
 
 
+def test_detail_includes_the_stored_script(jobs_env):
+    _, _, _, c = jobs_env
+    c.post("/api/jobs", json=SPEC)
+    assert "#SBATCH" in c.get("/api/jobs/512").json()["script"]
+    assert c.get("/api/jobs/999").json()["script"] is None   # no row: submitted elsewhere
+
+
 def test_submit_rate_limit(jobs_env):
     from sdweb.models import Account, Job
 
