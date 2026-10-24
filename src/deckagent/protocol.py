@@ -8,8 +8,8 @@ except streaming verbs, which return raw bytes (RawResponse).
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
-from dataclasses import dataclass
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -50,10 +50,13 @@ class RequestContext:
 
 @dataclass(frozen=True)
 class RawResponse:
-    """A non-JSON reply (file downloads, log reads)."""
+    """A non-JSON reply (file downloads, log reads). With chunks, the body is
+    streamed piece by piece and ends when the connection closes."""
 
-    body: bytes
+    body: bytes = b""
     content_type: str = "application/octet-stream"
+    headers: Mapping[str, str] = field(default_factory=dict)
+    chunks: Iterable[bytes] | None = None
 
 
 REASONS = {200: "OK", 400: "Bad Request", 401: "Unauthorized", 403: "Forbidden",

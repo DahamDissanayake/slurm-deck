@@ -32,6 +32,7 @@ class AgentConfig:
     max_workers: int
     request_deadline_s: int
     max_json_bytes: int
+    upload_resume_hours: int
 
 
 def _int(env: Mapping[str, str], key: str, default: int | None = None) -> int:
@@ -73,4 +74,5 @@ def load_config(env: Mapping[str, str]) -> AgentConfig:
         max_workers=_int(env, "SD_MAX_WORKERS", 8),
         request_deadline_s=_int(env, "SD_REQUEST_DEADLINE_S", 30),
         max_json_bytes=_int(env, "SD_MAX_JSON_BYTES", 1024 * 1024),
+        upload_resume_hours=_int(env, "UPLOAD_RESUME_HOURS", 24),
     )

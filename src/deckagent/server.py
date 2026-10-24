@@ -20,7 +20,7 @@ import stat
 import struct
 import threading
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from typing import Any
 
 from deckagent.audit import audit
@@ -93,6 +93,28 @@ class _Reader:
         return data
 
 
+class _Body(io.RawIOBase):
+    """A raw request body read straight from the socket, never more than
+    Content-Length and never all at once."""
+
+    def __init__(self, reader: _Reader, length: int) -> None:
+        self.reader, self.left = reader, length
+
+    def readable(self) -> bool:
+        return True
+
+    def readinto(self, out: Any) -> int:
+        if self.left <= 0:
+            return 0
+        if not self.reader.buf:
+            self.reader._fill()
+        n = min(len(out), self.left, len(self.reader.buf))
+        out[:n] = self.reader.buf[:n]
+        self.reader.buf = self.reader.buf[n:]
+        self.left -= n
+        return n
+
+
 def _peer_uid(sock: socket.socket) -> int:
     creds = sock.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i"))
     return int(struct.unpack("3i", creds)[1])
@@ -140,10 +162,13 @@ class _Handler(socketserver.BaseRequestHandler):
         config = self.server.config
         deadline = time.monotonic() + config.request_deadline_s
         result = "ok"
+        extra: Mapping[str, str] = {}
+        chunks: Iterable[bytes] | None = None
         try:
             status, ctype, body = 200, "application/json", self._dispatch(sock, deadline)
             if isinstance(body, RawResponse):
-                ctype, body = body.content_type, body.body
+                ctype, extra, chunks, body = (body.content_type, body.headers, body.chunks,
+                                              body.body)
         except _Timeout:
             status, ctype, result = 408, "application/json", "timeout"
             body = error_body("timeout", "The request took too long to arrive.")
@@ -159,12 +184,15 @@ class _Handler(socketserver.BaseRequestHandler):
               acting_admin=caller.acting_admin if caller else None, verb=self.verb_name,
               detail={"peer_uid": self.peer, "role": caller.role if caller else None},
               result=result)
-        head = (f"HTTP/1.1 {status} {REASONS.get(status, 'Error')}\r\n"
-                f"Content-Type: {ctype}\r\nContent-Length: {len(body)}\r\n"
-                "Connection: close\r\n\r\n").encode()
+        lines = [f"HTTP/1.1 {status} {REASONS.get(status, 'Error')}", f"Content-Type: {ctype}"]
+        if chunks is None:   # a streamed body has no length: it ends when we close
+            lines.append(f"Content-Length: {len(body)}")
+        lines += [*(f"{k}: {v}" for k, v in extra.items()), "Connection: close", "", ""]
         try:
             sock.settimeout(5)
-            sock.sendall(head + body)
+            sock.sendall("\r\n".join(lines).encode("latin-1") + body)
+            if chunks is not None:
+                self._send_chunks(sock, chunks)
             # Closing with unread input resets the connection, and the client
             # would see the reset instead of this reply (an early 403 or 413).
             # End our side, then drain a little of what is left.
@@ -175,6 +203,17 @@ class _Handler(socketserver.BaseRequestHandler):
                 drained += len(chunk)
         except OSError:
             pass   # the client went away; nothing to tell it
+
+    @staticmethod
+    def _send_chunks(sock: socket.socket, chunks: Iterable[bytes]) -> None:
+        sock.settimeout(60)
+        try:
+            for piece in chunks:
+                sock.sendall(piece)
+        except OSError:
+            raise
+        except Exception:
+            log.exception("streamed reply failed part way")   # the client sees a short body
 
     def _dispatch(self, sock: socket.socket, deadline: float) -> bytes | RawResponse:
         server = self.server
@@ -192,12 +231,15 @@ class _Handler(socketserver.BaseRequestHandler):
         if verb.body == "json" and length > config.max_json_bytes:
             raise AgentError("too_large", "The request body is too large.", 413)
 
-        caller = self.caller = server.resolve(peer, headers, server.store, config)
-        if caller.role not in verb.allow:
-            raise AgentError("not_allowed", "You are not allowed to do that.", 403)
+        if verb.session:
+            caller = self.caller = server.resolve(peer, headers, server.store, config)
+            if caller.role not in verb.allow:
+                raise AgentError("not_allowed", "You are not allowed to do that.", 403)
+        else:   # the handler authorises the request itself (an upload grant)
+            caller = Caller(None, "grant", None, False, None)
 
-        raw = reader.read(length)
-        payload: Any = read_json_body(raw) if verb.body == "json" else io.BytesIO(raw)
+        payload: Any = (read_json_body(reader.read(length)) if verb.body == "json"
+                        else _Body(reader, length))
         result = verb.handler(RequestContext(caller, config, headers), payload)
         return result if isinstance(result, RawResponse) else json_response(result)
 
