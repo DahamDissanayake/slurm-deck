@@ -34,9 +34,6 @@ dev = [
 [tool.setuptools.packages.find]
 where = ["src"]
 
-[tool.setuptools.package-data]
-sdweb = ["auth/*.txt"]
-
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
