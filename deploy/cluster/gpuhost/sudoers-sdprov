@@ -1,0 +1,5 @@
+# /etc/sudoers.d/sdprov on the GPU host (install 0440, check with visudo -c).
+# sdprov may run the helper as root with no arguments; the command arrives in
+# SSH_ORIGINAL_COMMAND, which is the only variable kept.
+Defaults!/usr/local/sbin/sd-gpu-helper env_keep += "SSH_ORIGINAL_COMMAND"
+sdprov ALL=(root) NOPASSWD: /usr/local/sbin/sd-gpu-helper ""
