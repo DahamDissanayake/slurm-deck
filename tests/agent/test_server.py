@@ -72,7 +72,8 @@ class Agent:
 def _start(tmp_path: Path, **overrides: str) -> Iterator[Agent]:
     env = {"SD_AGENT_SOCKET": str(tmp_path / "agent.sock"), "SD_WEB_UID": str(os.getuid()),
            "SD_WORKER_UID": "1", "SD_REQUEST_DEADLINE_S": "3", "SD_MAX_WORKERS": "4",
-           "SD_MAX_JSON_BYTES": "1024", **overrides}
+           "SD_MAX_JSON_BYTES": "1024", "SD_AUDIT_LOG": str(tmp_path / "audit.jsonl"),
+           **overrides}
     server = AgentServer(load_config(env), store=None, resolve=_resolve, verbs=registry)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -225,3 +226,25 @@ def test_config_defaults_and_required_uids():
         load_config({"SD_WEB_UID": "1001"})
     with pytest.raises(ValueError):
         load_config({"SD_WEB_UID": "abc", "SD_WORKER_UID": "1002"})
+
+
+def _audit_lines(agent: Agent) -> list[dict]:
+    path = Path(agent.server.config.audit_log)
+    return [jsonlib.loads(x) for x in path.read_text().splitlines()] if path.exists() else []
+
+
+def test_server_audits_each_verb(agent):
+    post(agent, "echo", json={"a": 1})
+    post(agent, "admin.only", json={})
+    post(agent, "conflict", json={}, session="admin")
+    post(agent, "no.such", json={})
+    got = [(x["verb"], x["actor"], x["result"]) for x in _audit_lines(agent)]
+    assert got == [("echo", "amasha", "ok"), ("admin.only", "amasha", "not_allowed"),
+                   ("conflict", "dinuka", "not_allowed"), ("no.such", None, "unknown_verb")]
+
+
+def test_refused_peer_is_audited(agent_with_uids_excluding_me):
+    post(agent_with_uids_excluding_me, "echo", json={})
+    [line] = _audit_lines(agent_with_uids_excluding_me)
+    assert (line["verb"], line["result"], line["detail"]["peer_uid"]) == ("", "peer_not_allowed",
+                                                                          os.getuid())
