@@ -1,0 +1,23 @@
+# deploy/cluster/envs/diffusion.yml
+# description: Stable Diffusion (diffusers, xformers)
+# Prebuilt conda environment, CUDA 12.8 / PyTorch 2.7 wheels (cu128).
+# Fast-moving libraries carry an upper bound: unbounded pins broke jobs before.
+# Built by the environments admin page into $NFS_ROOT/envs/diffusion.
+name: diffusion
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+    - --extra-index-url https://download.pytorch.org/whl/cu128
+    - torch==2.7.*
+    - torchvision
+    - diffusers>=0.27
+    - transformers>=4.40,<5
+    - accelerate>=0.30
+    - safetensors
+    - xformers
+    - Pillow
+    - invisible_watermark

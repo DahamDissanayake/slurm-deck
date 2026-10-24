@@ -1,0 +1,21 @@
+# deploy/cluster/envs/llm-serve.yml
+# description: LLM inference server (vLLM, transformers, FastAPI)
+# Prebuilt conda environment, CUDA 12.8 / PyTorch 2.7 wheels (cu128).
+# Fast-moving libraries carry an upper bound: unbounded pins broke jobs before.
+# Built by the environments admin page into $NFS_ROOT/envs/llm-serve.
+name: llm-serve
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+    - --extra-index-url https://download.pytorch.org/whl/cu128
+    - torch==2.7.*
+    - vllm>=0.4.0
+    - transformers>=4.40,<5
+    - accelerate>=0.30
+    - fastapi
+    - uvicorn
+    - huggingface_hub

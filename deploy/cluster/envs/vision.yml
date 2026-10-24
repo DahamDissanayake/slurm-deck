@@ -1,0 +1,24 @@
+# deploy/cluster/envs/vision.yml
+# description: Computer vision (timm, ultralytics/YOLO, torchvision)
+# Prebuilt conda environment, CUDA 12.8 / PyTorch 2.7 wheels (cu128).
+# Fast-moving libraries carry an upper bound: unbounded pins broke jobs before.
+# Built by the environments admin page into $NFS_ROOT/envs/vision.
+name: vision
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+    - --extra-index-url https://download.pytorch.org/whl/cu128
+    - torch==2.7.*
+    - torchvision
+    - torchaudio
+    - timm>=1.0
+    - ultralytics>=8.2
+    - Pillow
+    - opencv-python-headless
+    - albumentations
+    - matplotlib
+    - scikit-image
