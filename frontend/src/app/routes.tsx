@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { AdminLayout } from "../pages/admin/AdminLayout";
 import { Apply } from "../pages/Apply";
 import { ForgotPassword } from "../pages/ForgotPassword";
 import { Placeholder } from "../pages/Placeholder";
@@ -21,13 +22,16 @@ const PAGES: [string, string][] = [
   ["/", "Dashboard"], ["/new", "New job"], ["/jobs", "Jobs"], ["/jobs/:id", "Job"],
   ["/files/*", "Files"], ["/files", "Files"], ["/envs", "Environments"], ["/models", "Models"],
   ["/services", "Services"], ["/usage", "Usage"], ["/notify", "Notify"],
-  ["/account/password", "Change password"], ["/admin/*", "Admin"], ["/admin", "Admin"],
+  ["/account/password", "Change password"],
 ];
 
 export function App() {
   const { pathname } = useLocation();
   for (const [pattern, page] of PUBLIC) {
     if (match(pattern, pathname)) return page();
+  }
+  if (match("/admin", pathname) || match("/admin/*", pathname)) {
+    return <AppShell><AdminLayout /></AppShell>;
   }
   const found = PAGES.find(([pattern]) => match(pattern, pathname));
   return (
