@@ -159,8 +159,9 @@ frontend() {
     (cd frontend && "$@")
 }
 
+# package.json pins exact versions; there is no committed lockfile.
 frontend_lint() {
-    frontend npm ci --no-audit --no-fund --loglevel=error && frontend npm run lint
+    frontend npm install --no-audit --no-fund --loglevel=error && frontend npm run lint
 }
 
 step lint lint

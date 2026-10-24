@@ -34,3 +34,6 @@ Thumbs.db
 .claude/
 .superpowers
 docs/superpowers/
+
+# The frontend pins exact versions in package.json; no lockfile (PR size limit)
+frontend/package-lock.json
