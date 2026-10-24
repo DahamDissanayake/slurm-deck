@@ -68,6 +68,20 @@ def test_submit_stores_the_row_after_the_agent(jobs_env):
     assert c.get("/api/jobs/512/rerun").json()["spec"]["args"] == "--epochs 3"
 
 
+def test_defaults_say_whether_terminal_jobs_are_enabled(jobs_env):
+    from sdweb.models import Setting
+
+    app, _, _, c = jobs_env
+    assert c.get("/api/jobs/defaults").json()["terminal_enabled"] is True
+    with app.state.sessionmaker() as s, s.begin():
+        s.merge(Setting(key="terminal_jobs_enabled", value=False))
+    try:
+        assert c.get("/api/jobs/defaults").json()["terminal_enabled"] is False
+    finally:
+        with app.state.sessionmaker() as s, s.begin():
+            s.merge(Setting(key="terminal_jobs_enabled", value=True))
+
+
 def test_submit_rate_limit(jobs_env):
     from sdweb.models import Account, Job
 
