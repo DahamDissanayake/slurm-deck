@@ -26,6 +26,7 @@ const FIELDS: [Key, string, string][] = [
 const PICK: Partial<Record<Key, "file" | "dir">> = {
   script: "file", data_path: "dir", model_path: "dir",
 };
+const SCRIPT_TYPES = [".py", ".sh"];
 
 /** Step 2: what to run and with what. Notebooks and terminals need no script. */
 export function StepInputs({ spec, onChange, onBack, onNext }: {
@@ -55,7 +56,7 @@ export function StepInputs({ spec, onChange, onBack, onNext }: {
         </div>
       ))}
       {picking && (
-        <FilePicker mode={PICK[picking] ?? "file"} accept={picking === "script" ? [".py", ".sh"] : undefined}
+        <FilePicker mode={PICK[picking] ?? "file"} accept={picking === "script" ? SCRIPT_TYPES : undefined}
                     onClose={() => setPicking(null)}
                     onPick={(path) => onChange({ ...spec, [picking]: path })} />
       )}
