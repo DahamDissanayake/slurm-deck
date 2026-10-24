@@ -7,6 +7,8 @@ import os
 import signal
 import threading
 
+import deckagent.verbs.accounts  # noqa: F401  (each verb module registers its verbs)
+import deckagent.verbs.cluster  # noqa: F401
 from deckagent.config import load_config
 from deckagent.server import AgentServer
 from deckagent.sessions import PgSessionStore, resolve_caller

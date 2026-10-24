@@ -35,7 +35,7 @@ def _refused(message: str) -> AgentError:
     return AgentError("identity_refused", message, 403)
 
 
-def _lookup(name: str, pw: Any, gr: Any) -> tuple[PosixIdentity, frozenset[str]]:
+def lookup_account(name: str, pw: Any, gr: Any) -> tuple[PosixIdentity, frozenset[str]]:
     """The account's identity and the names of every group it is in."""
     try:
         entry = pw.getpwnam(name)
@@ -54,7 +54,7 @@ def identity_for_user(caller: Caller, config: AgentConfig, pw: Any = pwd,
     if (name is None or caller.is_worker or not USERNAME_RE.fullmatch(name)
             or name in RESERVED or name == config.ops_user):
         raise _refused("This account can't run work on the cluster.")
-    ident, groups = _lookup(name, pw, gr)
+    ident, groups = lookup_account(name, pw, gr)
     if ident.uid < UID_MIN or ident.gid == 0:
         raise _refused("This account can't run work on the cluster.")
     if groups & (PRIVILEGED_GROUPS | {config.admin_group}):
@@ -69,7 +69,7 @@ def ops_identity(caller: Caller, config: AgentConfig, pw: Any = pwd,
     """The ops account, for admin file work."""
     if caller.role != "admin" or caller.is_worker:
         raise AgentError("not_allowed", "Only admins can do that.", 403)
-    ident, _ = _lookup(config.ops_user, pw, gr)
+    ident, _ = lookup_account(config.ops_user, pw, gr)
     if ident.uid < UID_MIN or ident.gid == 0:
         raise _refused("The ops account is misconfigured.")
     return ident

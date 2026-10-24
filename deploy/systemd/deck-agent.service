@@ -1,0 +1,25 @@
+[Unit]
+Description=Slurm Deck deck-agent (privileged broker for the web app)
+After=network-online.target remote-fs.target slurmctld.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Root, because it creates accounts and drops to each user for their work.
+User=root
+EnvironmentFile=/etc/slurm-deck-web/agent.env
+ExecStart=/opt/slurm-deck-web/agent-venv/bin/python -m deckagent
+RuntimeDirectory=slurm-deck-web
+RuntimeDirectoryPreserve=yes
+LogsDirectory=slurm-deck-web
+Restart=always
+RestartSec=2
+# /usr and /boot read-only; /etc stays writable for useradd and groupadd.
+ProtectSystem=true
+ProtectHome=read-only
+# Dropping to a user needs no new privileges.
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target
