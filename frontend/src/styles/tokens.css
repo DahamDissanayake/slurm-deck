@@ -1,0 +1,65 @@
+/* Design tokens (spec §6). Components use these through the Tailwind theme,
+   never as literal colours. Dark is the default; the OS light preference
+   switches to light unless the in-app toggle chose dark; the toggle's
+   data-theme overrides the OS either way. No external fonts: the LAN may
+   have no internet. */
+
+:root {
+  color-scheme: dark;
+  --bg: #0A0E13;
+  --surface: #12181F;
+  --surface-2: #1A222C;
+  --border: #26313D;
+  --text: #E7ECF1;
+  --text-dim: #7E8CA0;
+  --accent: #3FD9E8;
+  --danger: #FF6B6B;
+  --warning: #F5B94A;
+  --ok: #4ADE80;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, "Roboto Mono", monospace;
+  --font-ui: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --bg: #F3F6F8;
+    --surface: #FFFFFF;
+    --surface-2: #EEF2F5;
+    --border: #D7DEE5;
+    --text: #16202B;
+    --text-dim: #5B6B7C;
+    --accent: #0E93A3;
+    --danger: #C62828;
+    --warning: #9A6400;
+    --ok: #1B7F3B;
+  }
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #F3F6F8;
+  --surface: #FFFFFF;
+  --surface-2: #EEF2F5;
+  --border: #D7DEE5;
+  --text: #16202B;
+  --text-dim: #5B6B7C;
+  --accent: #0E93A3;
+  --danger: #C62828;
+  --warning: #9A6400;
+  --ok: #1B7F3B;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0A0E13;
+  --surface: #12181F;
+  --surface-2: #1A222C;
+  --border: #26313D;
+  --text: #E7ECF1;
+  --text-dim: #7E8CA0;
+  --accent: #3FD9E8;
+  --danger: #FF6B6B;
+  --warning: #F5B94A;
+  --ok: #4ADE80;
+}
