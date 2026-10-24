@@ -10,6 +10,8 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import sessionmaker
 
 from sdweb import db
+from sdweb.accounts.allowlist import router as allowlist_router
+from sdweb.accounts.applications import router as applications_router
 from sdweb.accounts.routes import router as accounts_router
 from sdweb.auth.routes import router as auth_router
 from sdweb.config import WebSettings
@@ -30,4 +32,6 @@ def create_app(settings: WebSettings, agent: Any | None = None) -> FastAPI:
 
     app.include_router(auth_router)
     app.include_router(accounts_router)
+    app.include_router(allowlist_router)
+    app.include_router(applications_router)
     return app
