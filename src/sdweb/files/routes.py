@@ -12,6 +12,7 @@ import csv
 import io
 import posixpath
 from collections.abc import AsyncIterator, Iterator
+from itertools import islice
 from typing import Annotated, Any
 from urllib.parse import quote
 
@@ -60,7 +61,7 @@ def _open(request: Request, ctx: SessionCtx, verb: str,
     except AgentCallError as e:
         raise ApiError(e.status if 400 <= e.status < 500 else 502, e.code,
                        message=e.message) from None
-    return body  # type: ignore[no-any-return]
+    return body
 
 
 def _read(request: Request, ctx: SessionCtx, path: str, limit: int, admin: bool) -> bytes:
@@ -161,7 +162,7 @@ def preview(ctx: User, request: Request, path: str, user: str = "") -> Any:
     if ext in (".csv", ".tsv"):
         text = _read(request, ctx, path, TABLE_READ, admin).decode(errors="replace")
         reader = csv.reader(io.StringIO(text), delimiter="\t" if ext == ".tsv" else ",")
-        return {"kind": "table", "rows": [row for _, row in zip(range(TABLE_ROWS), reader)]}
+        return {"kind": "table", "rows": list(islice(reader, TABLE_ROWS))}
     raw = _read(request, ctx, path, TEXT_PREVIEW + 1, admin)
     return {"kind": "text", "text": raw[:TEXT_PREVIEW].decode(errors="replace"),
             "truncated": len(raw) > TEXT_PREVIEW}

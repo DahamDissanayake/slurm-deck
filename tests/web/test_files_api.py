@@ -56,8 +56,9 @@ def files(env):
 
 
 def test_download_filename_encoding(files):
-    _, _, c = files
+    _, agent, c = files
     path = f"{HOME}/résumé #1 100%.txt"
+    agent.files[path] = b"cv"
     r = c.get("/api/files/download", params={"path": path})
     cd = r.headers["Content-Disposition"]
     assert "filename*=UTF-8''r%C3%A9sum%C3%A9%20%231%20100%25.txt" in cd
