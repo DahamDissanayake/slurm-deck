@@ -85,6 +85,20 @@ def test_submit_runs_sbatch_as_user_and_returns_id(jobs):
     assert (jobs.dir / "shared/jobs/amasha/train_20261023_101500/job.sbatch").read_text() == GOOD
 
 
+def test_submit_writes_the_tbguard_extra_file(jobs):
+    jobs.call("job.submit", {"folder_name": "tb_1", "script": GOOD,
+                             "extra_files": {"tbguard.py": "print('guard')\n"}})
+    assert (jobs.dir / "shared/jobs/amasha/tb_1/tbguard.py").read_text() == "print('guard')\n"
+
+
+@pytest.mark.parametrize("extra", [{"evil.sh": "x"}, {"../tbguard.py": "x"},
+                                   {"tbguard.py": 5}, {"tbguard.py": "x" * 70_000}])
+def test_submit_refuses_other_extra_files(jobs, extra):
+    e = _err(jobs, "job.submit", {"folder_name": "tb_2", "script": GOOD, "extra_files": extra})
+    assert (e.status, e.code) == (422, "bad_extra_file")
+    assert "sbatch" not in jobs.calls()
+
+
 @pytest.mark.parametrize("payload", [
     {"folder_name": "x", "script": "#!/bin/bash\n#SBATCH --uid=0\n"},
     {"folder_name": "x", "script": "#!/bin/bash\n#SBATCH --get-user-env\n"},
