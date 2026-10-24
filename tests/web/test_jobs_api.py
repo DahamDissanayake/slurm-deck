@@ -19,12 +19,14 @@ class JobAgent:
         self.errors: dict[str, AgentCallError] = {}
         self.show = {"owner": "amasha", "state": "RUNNING"}
         self.err_log = b""
+        self.session = {"state": "RUNNING", "ready": False, "kind": None}
 
     def call(self, verb, payload=None, *, session=None):
         self.calls.append((verb, payload))
         if verb in self.errors:
             raise self.errors[verb]
         return {"qos.limits": {"max_wall_s": 8 * 3600, "max_pods_per_user": 4},
+                "session.info": self.session,
                 "cluster.status": {"node": None, "pods_total": 0},
                 "job.submit": {"job_id": "512", "folder": "/shared/jobs/amasha/f"},
                 "job.show": self.show, "job.extend": {"new_limit_s": 10 * 3600},
@@ -152,3 +154,74 @@ def test_log_and_cluster_pass_through(jobs_env):
     assert r.text == "hello log" and r.headers["x-sd-size"] == "9"
     assert c.get("/api/cluster/status").json()["pods_total"] == 0
     assert c.get("/api/jobs/defaults").json()["spec"]["time_limit"] == "08:00:00"
+
+
+def _set(app, key, value):
+    from sdweb.models import Setting
+
+    with app.state.sessionmaker() as s, s.begin():
+        s.merge(Setting(key=key, value=value))
+
+
+def test_terminal_refused_when_disabled(jobs_env):
+    app, agent, _, c = jobs_env
+    _set(app, "terminal_jobs_enabled", False)
+    try:
+        for url in ("/api/jobs/preview", "/api/jobs"):
+            r = c.post(url, json={"intent": "terminal"})
+            assert (r.status_code, r.json()["error"]) == (403, "terminal_disabled")
+        assert not [v for v, _ in agent.calls if v == "job.submit"]
+    finally:
+        _set(app, "terminal_jobs_enabled", True)
+
+
+def test_terminal_submits_when_enabled(jobs_env):
+    _, agent, _, c = jobs_env
+    assert c.post("/api/jobs", json={"intent": "terminal"}).status_code == 201
+    _, payload = next(x for x in agent.calls if x[0] == "job.submit")
+    assert "terminals_enabled" in payload["script"]
+
+
+@pytest.mark.parametrize("logdir", ["/etc", "/shared/users/kasun/runs",
+                                    "/shared/users/amasha/../kasun"])
+def test_tensorboard_logdir_outside_the_jail_is_422(jobs_env, logdir):
+    _, agent, _, c = jobs_env
+    r = c.post("/api/jobs", json={"intent": "tensorboard", "data_path": logdir})
+    assert r.status_code == 422
+    assert not [v for v, _ in agent.calls if v == "job.submit"]
+
+
+def test_tensorboard_submits_with_the_token_guard(jobs_env):
+    _, agent, _, c = jobs_env
+    r = c.post("/api/jobs", json={"intent": "tensorboard",
+                                  "data_path": "/shared/users/amasha/runs"})
+    assert r.status_code == 201, r.text
+    _, payload = next(x for x in agent.calls if x[0] == "job.submit")
+    assert "def make_server" in payload["extra_files"]["tbguard.py"]
+    assert "/shared/users/amasha/runs" in payload["script"]
+
+
+def test_notebook_detail_returns_open_url_when_ready(jobs_env):
+    _, agent, _, c = jobs_env
+    assert c.post("/api/jobs", json={"intent": "notebook"}).status_code == 201
+    assert c.get("/api/jobs/512").json()["session"] == {
+        "kind": "notebook", "ready": False, "open_url": None}
+    agent.session = {"state": "RUNNING", "ready": True, "kind": "notebook", "node": "n",
+                     "port": 8801, "token": "t"}
+    session = c.get("/api/jobs/512").json()["session"]
+    assert session["ready"] and session["open_url"].endswith("/notebook/512/lab")
+    assert "token" not in session
+
+
+def test_session_check_failure_is_shown_not_raised(jobs_env):
+    _, agent, _, c = jobs_env
+    c.post("/api/jobs", json={"intent": "notebook"})
+    agent.errors["session.info"] = AgentCallError("session_mismatch", "Wrong node.", 409)
+    session = c.get("/api/jobs/512").json()["session"]
+    assert (session["ready"], session["error"]) == (False, "Wrong node.")
+
+
+def test_batch_detail_has_no_session(jobs_env):
+    _, _, _, c = jobs_env
+    c.post("/api/jobs", json=SPEC)
+    assert c.get("/api/jobs/512").json()["session"] is None
