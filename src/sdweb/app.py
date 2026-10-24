@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import sessionmaker
 
 from sdweb import db
+from sdweb.accounts.routes import router as accounts_router
 from sdweb.auth.routes import router as auth_router
 from sdweb.config import WebSettings
 from sdweb.deps import ApiError
@@ -28,4 +29,5 @@ def create_app(settings: WebSettings, agent: Any | None = None) -> FastAPI:
         return JSONResponse({"error": exc.code, **exc.extra}, status_code=exc.status)
 
     app.include_router(auth_router)
+    app.include_router(accounts_router)
     return app
