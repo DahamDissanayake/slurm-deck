@@ -155,7 +155,8 @@ def detail(job_id: str, ctx: User, request: Request, db: Db) -> dict:
     row = db.get(Job, job_id)
     spec = row.spec if row else {}
     out: dict[str, Any] = {**info, "kind": row.kind if row else "batch",
-                           "folder": row.folder if row else None, "explanation": None,
+                           "folder": row.folder if row else None,
+                           "script": row.script if row else None, "explanation": None,
                            "smoke": None}
     if info.get("state") in FAILED:
         err = _read(request, ctx, job_id, "err")[-TAIL:].decode(errors="replace")

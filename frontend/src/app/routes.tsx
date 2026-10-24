@@ -3,6 +3,9 @@ import type { ReactNode } from "react";
 import { AdminLayout } from "../pages/admin/AdminLayout";
 import { Apply } from "../pages/Apply";
 import { ForgotPassword } from "../pages/ForgotPassword";
+import { Home } from "../pages/Home";
+import { JobDetail } from "../pages/JobDetail";
+import { Jobs } from "../pages/Jobs";
 import { NewJob } from "../pages/NewJob";
 import { Notify } from "../pages/Notify";
 import { Placeholder } from "../pages/Placeholder";
@@ -21,10 +24,8 @@ const PUBLIC: [string, () => ReactNode][] = [
 
 // Every signed-in page; later phases replace the placeholders.
 const PAGES: [string, string][] = [
-  ["/", "Dashboard"], ["/new", "New job"], ["/jobs", "Jobs"], ["/jobs/:id", "Job"],
   ["/files/*", "Files"], ["/files", "Files"], ["/envs", "Environments"], ["/models", "Models"],
-  ["/services", "Services"], ["/usage", "Usage"], ["/notify", "Notify"],
-  ["/account/password", "Change password"],
+  ["/services", "Services"], ["/usage", "Usage"], ["/account/password", "Change password"],
 ];
 
 export function App() {
@@ -37,6 +38,14 @@ export function App() {
   }
   if (pathname === "/new") return <AppShell><NewJob /></AppShell>;
   if (pathname === "/notify") return <AppShell><Notify /></AppShell>;
+  const job = match("/jobs/:id", pathname);
+  if (pathname === "/" || pathname === "/jobs" || job) {
+    return (
+      <AppShell>
+        {job ? <JobDetail id={job.id} /> : pathname === "/" ? <Home /> : <Jobs />}
+      </AppShell>
+    );
+  }
   const found = PAGES.find(([pattern]) => match(pattern, pathname));
   return (
     <AppShell>
