@@ -76,7 +76,8 @@ def _check(ls: Any, script: str, qos: dict[str, Any], ctx: SessionCtx,
 def defaults(ctx: User, request: Request, db: Db, intent: str = "batch") -> dict:
     stats = node_stats(_call(request, ctx, "cluster.status"))
     ls = default_spec(intent, stats, setting(db, "default_time_limit", "08:00:00"))
-    return {"spec": asdict(ls), "qos": _qos(request, ctx)}
+    return {"spec": asdict(ls), "qos": _qos(request, ctx),
+            "terminal_enabled": bool(setting(db, "terminal_jobs_enabled", True))}
 
 
 @router.post("/preview")

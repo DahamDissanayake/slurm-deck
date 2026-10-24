@@ -3,6 +3,8 @@ import type { ReactNode } from "react";
 import { AdminLayout } from "../pages/admin/AdminLayout";
 import { Apply } from "../pages/Apply";
 import { ForgotPassword } from "../pages/ForgotPassword";
+import { NewJob } from "../pages/NewJob";
+import { Notify } from "../pages/Notify";
 import { Placeholder } from "../pages/Placeholder";
 import { SetPassword } from "../pages/SetPassword";
 import { SignIn } from "../pages/SignIn";
@@ -33,6 +35,8 @@ export function App() {
   if (match("/admin", pathname) || match("/admin/*", pathname)) {
     return <AppShell><AdminLayout /></AppShell>;
   }
+  if (pathname === "/new") return <AppShell><NewJob /></AppShell>;
+  if (pathname === "/notify") return <AppShell><Notify /></AppShell>;
   const found = PAGES.find(([pattern]) => match(pattern, pathname));
   return (
     <AppShell>
