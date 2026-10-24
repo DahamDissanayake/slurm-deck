@@ -13,7 +13,7 @@ import re
 import shlex
 from dataclasses import asdict
 from datetime import datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
@@ -144,6 +144,7 @@ def build(body: BuildIn, ctx: UserWrite, request: Request, db: Db, settings: Set
           now: Now) -> dict:
     if not NAME_RE.fullmatch(body.name) or body.kind not in ("conda", "venv"):
         raise ApiError(422, "bad_input", message="Use letters, digits, '.', '_' or '-'.")
+    kind: Literal["conda", "venv"] = "venv" if body.kind == "venv" else "conda"
     account = ctx.effective_account
     user, nfs = account.username, settings.nfs_root
     dest = f"{user_upload_root(nfs, user)}/envs/{body.name}"
@@ -154,7 +155,7 @@ def build(body: BuildIn, ctx: UserWrite, request: Request, db: Db, settings: Set
         raise ApiError(422, "bad_input", message="The package list has an unclosed quote.") \
             from None
     script = render_env_build(user, f"{user_job_root(nfs, user)}/{folder_name}",
-                              account.home or f"/home/{user}", kind=body.kind, name=body.name,
+                              account.home or f"/home/{user}", kind=kind, name=body.name,
                               dest=dest, packages=body.packages,
                               requirements_path=body.requirements_path or None, spec_path=None,
                               partition=settings.partition, nfs_root=nfs)
