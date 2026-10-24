@@ -79,5 +79,5 @@ def test_submit_as_ops_is_admin_only(envs):
     payload = {"folder_name": "install_1", "script": GOOD, "as_ops": True}
     assert _err(envs, "job.submit", payload).status == 403
     r = envs.call("job.submit", payload, as_="admin:dinuka")
-    assert r["folder"].endswith("jobs/sd-ops/install_1")
+    assert r["folder"].endswith("/jobs-ops/dinuka/install_1")
     assert ("sd-ops", "sbatch") in envs.ran

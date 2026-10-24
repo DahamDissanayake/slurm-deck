@@ -34,6 +34,7 @@ DEFAULT_CAP_HOURS = 24
 LIVE_STATES = frozenset({"PENDING", "RUNNING", "SUSPENDED", "CONFIGURING", "COMPLETING",
                          "REQUEUED", "RESIZING"})
 LOG_MAX = 1024 * 1024
+OPS_JOBS = "jobs-ops"   # sd-ops's job workspace under the NFS root
 EXTRA_FILES = frozenset({"tbguard.py"})
 EXTRA_MAX = 64 * 1024
 _WRITE = ("import os, sys; fd = os.open(sys.argv[1], os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o640);"
@@ -83,23 +84,23 @@ def _extra_files(raw: Any) -> dict[str, str]:
 
 @verb("job.submit", allow=PEOPLE)
 def submit(ctx: RequestContext, payload: dict[str, Any]) -> dict[str, Any]:
-    """as_ops (admins only): submit as sd-ops, for work on the shared areas
-    such as installing a prebuilt environment."""
+    """as_ops (admins only): run as sd-ops, for work on the shared areas such
+    as installing a prebuilt environment. Those jobs live in OPS_JOBS/<admin>/,
+    sd-ops's workspace, so the folder also says which admin started it."""
     cfg, user, caller = ctx.config, str(ctx.caller.username), ctx.caller
     as_ops = payload.get("as_ops") is True
     if as_ops and (caller.role != "admin" or caller.acting_admin):
         raise AgentError("not_allowed", "Only admins can submit as the shared account.", 403)
-    if as_ops:
-        user = cfg.ops_user
+    subdir = OPS_JOBS if as_ops else "jobs"
     folder_name, script = str(payload.get("folder_name", "")), str(payload.get("script", ""))
     if not FOLDER_RE.fullmatch(folder_name) or folder_name in (".", ".."):
         raise AgentError("bad_folder", "That job folder name isn't allowed.", 422)
-    problems = validate_sbatch(script, user, nfs_root=cfg.nfs_root)
+    problems = validate_sbatch(script, user, nfs_root=cfg.nfs_root, jobs_subdir=subdir)
     if problems:
         raise AgentError("bad_script", "; ".join(problems), 422, {"problems": problems})
     extra = _extra_files(payload.get("extra_files"))
     ident = _ops_identity(caller, cfg) if as_ops else _identity(caller, cfg)
-    folder = f"{user_job_root(cfg.nfs_root, user)}/{folder_name}"
+    folder = f"{user_job_root(cfg.nfs_root, user, subdir)}/{folder_name}"
     path = f"{folder}/job.sbatch"
     _as_user(ident, ["mkdir", "-p", "-m", "0770", folder])
     _as_user(ident, [sys.executable, "-c", _WRITE, path], script.encode())
