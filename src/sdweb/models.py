@@ -181,3 +181,11 @@ class Template(Base):
     name: Mapped[str] = mapped_column(Text)
     spec: Mapped[Any] = mapped_column(JSONB)
     created_at: Mapped[datetime] = _now()
+
+
+class NotifySubscription(Base):
+    __tablename__ = "notify_subscriptions"
+    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"),
+                                            primary_key=True)
+    wanted_pods: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = _now()
