@@ -216,27 +216,52 @@
 
 ---
 
-### Task 7: Frontend shell, design tokens and public pages
+### Task 7a: Frontend scaffold, design tokens and frontend CI
 
-**SerenEdge:** `SLURM-17`
+**SerenEdge:** `SLURM-54` · CI change, person-reviewed · may exceed 800 lines (package-lock.json)
+
+Split out of the original Task 7: an existing task can't become a CI change,
+and the whole of Task 7 plus a lockfile doesn't fit one 800-line PR.
 
 **Files:**
-- Create: `frontend/package.json`, `frontend/vite.config.ts`, `frontend/tsconfig.json`, `frontend/tailwind.config.ts`, `frontend/index.html`, `frontend/src/main.tsx`, `frontend/src/styles/tokens.css`, `frontend/src/api/client.ts`, `frontend/src/api/auth.ts`, `frontend/src/app/AppShell.tsx`, `frontend/src/app/routes.tsx`, `frontend/src/app/ThemeToggle.tsx`, `frontend/src/app/ViewAsBanner.tsx`, `frontend/src/pages/SignIn.tsx`, `frontend/src/pages/Apply.tsx`, `frontend/src/pages/SetPassword.tsx`, `frontend/src/pages/ForgotPassword.tsx`, `frontend/src/pages/Placeholder.tsx`, `frontend/src/components/Panel.tsx`, `frontend/src/components/Wordmark.tsx`, `frontend/src/**/*.test.tsx`
+- Create: `frontend/package.json`, `frontend/package-lock.json`, `frontend/vite.config.ts`, `frontend/tsconfig.json`, `frontend/tailwind.config.ts`, `frontend/postcss.config.js`, `frontend/eslint.config.js`, `frontend/index.html`, `frontend/src/main.tsx`, `frontend/src/styles/tokens.css`, `frontend/src/components/Panel.tsx`, `frontend/src/components/Wordmark.tsx`, `frontend/src/components/*.test.tsx`, `frontend/src/test/setup.ts`
+- Modify: `scripts/ci.sh`, `.github/workflows/ci.yml`
 
 **Interfaces:**
-- Consumes: Task 3 and 6 endpoints.
 - Produces:
-  - `tokens.css`: the spec §6 token table verbatim on `:root` (dark), redefined under `@media (prefers-color-scheme: light)` and again under `:root[data-theme="light"]` / `:root[data-theme="dark"]`; plus `--danger`, `--warning`, `--ok` (separate from `--accent`). Tailwind theme maps `bg`, `surface`, `surface-2`, `border`, `text`, `text-dim`, `accent`, `danger`, `warning`, `ok` to the variables. Font stacks exactly as spec §6. No external font or CDN requests.
+  - `tokens.css`: the spec §6 token table verbatim on `:root` (dark), redefined under `@media (prefers-color-scheme: light)` (guarded by `:root:not([data-theme="dark"])`) and again under `:root[data-theme="light"]` / `:root[data-theme="dark"]`; plus `--danger`, `--warning`, `--ok` (separate from `--accent`). Font stacks exactly as spec §6. No external font or CDN requests.
+  - Tailwind theme mapping `bg`, `surface`, `surface-2`, `border`, `text`, `text-dim`, `accent`, `danger`, `warning`, `ok` to the variables.
+  - `Wordmark` (`> SLURM` in text colour, `DECK` in accent, monospace) and `Panel` (double-ruled top border).
+  - npm scripts: `lint`, `typecheck` (`tsc --noEmit`), `test` (Vitest + Testing Library, jsdom), `build` (Vite → `frontend/dist/`).
+  - `scripts/ci.sh` steps `frontend-lint`, `frontend-typecheck`, `frontend-test`, `frontend-build`, run after `build` and only when `frontend/` exists; each prints the `::serenedge-step` markers. The non-Linux container run installs Node 20 before the steps. `.github/workflows/ci.yml` adds `actions/setup-node` (Node 20, npm cache keyed on `frontend/package-lock.json`).
+
+- [ ] **Step 1:** Vitest tests: `Wordmark` renders `> SLURM` and `DECK` with the accent class; `Panel` renders its title and children; a test reads `tokens.css` and checks every spec §6 token is defined for both themes.
+- [ ] **Step 2:** `npm test` → FAIL. **Step 3:** Implement. **Step 4:** `npm run lint && npm run typecheck && npm test -- --run && npm run build` → PASS; `serenedge ci` shows the four frontend steps passing.
+- [ ] **Step 5:** Commit `<KEY>: add frontend scaffold, design tokens and frontend CI steps`.
+
+---
+
+### Task 7b: App shell, API client and public pages
+
+**SerenEdge:** `SLURM-17` (re-scoped) · depends on Task 7a (`SLURM-54`)
+
+**Files:**
+- Create: `frontend/src/api/client.ts`, `frontend/src/api/auth.ts`, `frontend/src/app/AppShell.tsx`, `frontend/src/app/routes.tsx`, `frontend/src/app/ThemeToggle.tsx`, `frontend/src/app/ViewAsBanner.tsx`, `frontend/src/pages/SignIn.tsx`, `frontend/src/pages/Apply.tsx`, `frontend/src/pages/SetPassword.tsx`, `frontend/src/pages/ForgotPassword.tsx`, `frontend/src/pages/Placeholder.tsx`, tests alongside.
+- Modify: `frontend/src/main.tsx` (mount the router).
+
+**Interfaces:**
+- Consumes: Task 7a tokens and components; Task 3 and 6 endpoints.
+- Produces:
   - `api/client.ts`: `apiFetch<T>(path, init?)` sending `credentials: "same-origin"`, adding `X-CSRF-Token` from the last `/api/auth/me` or login response on non-GET, throwing `ApiError{status, code, message}`; on 401 redirects to `/sign-in?next=<path>`.
-  - Routes: `/sign-in`, `/apply`, `/set-password?token=`, `/forgot-password`, `/` (home, Phase 3), `/new`, `/jobs`, `/jobs/:id`, `/files/*`, `/envs`, `/models`, `/services`, `/usage`, `/notify`, `/admin/*`. Unbuilt pages render `Placeholder`.
+  - Routes: `/sign-in`, `/apply`, `/set-password` and `/reset-password` (token read from the URL fragment `#token=`, never the query string), `/forgot-password`, `/` (home, Phase 3), `/new`, `/jobs`, `/jobs/:id`, `/files/*`, `/envs`, `/models`, `/services`, `/usage`, `/notify`, `/admin/*`. Unbuilt pages render `Placeholder`.
   - `AppShell`: left sidebar (Dashboard, New job, Jobs, Files, Environments, Models, Services, Usage, Notify, Admin for admins), top bar (cluster status slot, account menu with Change password / Sign out), `ViewAsBanner` (red, "Viewing as {username} — every action is recorded. Stop viewing") whenever `acting_as` is set.
-  - `SignIn`: `> SLURM` / `DECK` wordmark, tagline "Run your GPU work on the cluster from your browser.", double-ruled `Panel`, email/password, "Forgot password", "Apply for access" (only when `apply-open`), "Download the site certificate" link to `/ca.crt`, footer `Slurm Deck · v{version} · MIT · source`.
+  - `SignIn`: wordmark, tagline "Run your GPU work on the cluster from your browser.", double-ruled `Panel`, email/password, "Forgot password", "Apply for access" (only when `apply-open`), "Download the site certificate" link to `/ca.crt`, footer `Slurm Deck · v{version} · MIT · source`.
   - `Apply`: the spec §5.4 fields, client-side required checks, shows server copy verbatim.
   - `ThemeToggle` persists `localStorage["sd-theme"]` (`light`|`dark`|absent), wrapped in try/catch.
 
-- [ ] **Step 1:** Vitest tests: SignIn hides Apply when `open:false`; shows server error `bad_credentials` as "That email and password don't match."; ThemeToggle sets `data-theme` and survives a throwing `localStorage`; ViewAsBanner renders when `acting_as` present; `apiFetch` adds the CSRF header on POST only.
-- [ ] **Step 2:** `npm test` → FAIL. **Step 3:** Implement. **Step 4:** `npm test && npm run build` → PASS, `dist/` produced. Add frontend steps to `scripts/ci.sh` (`frontend-lint` `npm run lint`, `frontend-typecheck` `npx tsc --noEmit`, `frontend-test` `npm test -- --run`, `frontend-build` `npm run build`) and Node 20 to the GitHub workflow; run `serenedge ci` → PASS. This makes the task a CI change.
-- [ ] **Step 5:** Commit `<KEY>: add React shell, design tokens and sign-in/apply/password pages`.
+- [ ] **Step 1:** Vitest tests: SignIn hides Apply when `open:false`; shows server error `bad_credentials` as "That email and password don't match."; ThemeToggle sets `data-theme` and survives a throwing `localStorage`; ViewAsBanner renders when `acting_as` present; `apiFetch` adds the CSRF header on POST only; SetPassword reads the token from the fragment.
+- [ ] **Step 2:** `npm test` → FAIL. **Step 3:** Implement. **Step 4:** `serenedge ci` → PASS (frontend steps included).
+- [ ] **Step 5:** Commit `<KEY>: add app shell, API client and sign-in/apply/password pages`.
 
 ---
 
