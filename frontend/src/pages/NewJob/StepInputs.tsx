@@ -1,3 +1,6 @@
+import { useEffect, useState } from "react";
+
+import { envs } from "../../api/envs";
 import type { LaunchSpec } from "../../api/newjob";
 
 export const field = "mt-1 mb-3 block w-full rounded-sm border border-border bg-surface-2 px-3 py-2 text-text";
@@ -7,8 +10,8 @@ export const secondary =
 
 type Key = "script" | "conda_env" | "data_path" | "model_path" | "args" | "packages";
 
-// Paths are typed for now; the file picker (Phase 4) and the environment
-// list (Phase 6) replace these inputs.
+// Paths are typed for now (the file picker replaces them); the environment
+// field suggests the ready environments from /api/envs.
 const FIELDS: [Key, string, string][] = [
   ["script", "Script", "/shared/users/you/train.py"],
   ["conda_env", "Environment", "Conda environment name or path"],
@@ -23,11 +26,18 @@ export function StepInputs({ spec, onChange, onBack, onNext }: {
   spec: LaunchSpec; onChange: (s: LaunchSpec) => void; onBack: () => void; onNext: () => void;
 }) {
   const fields = spec.intent === "batch" ? FIELDS : FIELDS.filter(([k]) => k !== "script" && k !== "args");
+  const [ready, setReady] = useState<string[]>([]);
+  useEffect(() => {
+    envs.list().then((l) => setReady([...l.prebuilt, ...l.mine].filter((e) => e.ready)
+      .map((e) => e.path)), () => setReady([]));
+  }, []);
   return (
     <div>
+      <datalist id="sd-envs">{ready.map((p) => <option key={p} value={p} />)}</datalist>
       {fields.map(([key, label, hint]) => (
         <label key={key} className="block text-sm text-text-dim">{label}
           <input className={field} placeholder={hint} value={spec[key]}
+                 list={key === "conda_env" ? "sd-envs" : undefined}
                  onChange={(e) => onChange({ ...spec, [key]: e.target.value })} />
         </label>
       ))}
