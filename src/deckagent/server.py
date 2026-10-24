@@ -23,6 +23,7 @@ import time
 from collections.abc import Callable, Mapping
 from typing import Any
 
+from deckagent.audit import audit
 from deckagent.config import AgentConfig
 from deckagent.protocol import (
     REASONS,
@@ -129,23 +130,35 @@ def _read_head(reader: _Reader) -> tuple[str, dict[str, str], int]:
 class _Handler(socketserver.BaseRequestHandler):
     server: AgentServer
 
+    # Filled in by _dispatch as far as it gets, for the audit line.
+    peer: int | None = None
+    verb_name = ""
+    caller: Caller | None = None
+
     def handle(self) -> None:
         sock: socket.socket = self.request
         config = self.server.config
         deadline = time.monotonic() + config.request_deadline_s
+        result = "ok"
         try:
             status, ctype, body = 200, "application/json", self._dispatch(sock, deadline)
             if isinstance(body, RawResponse):
                 ctype, body = body.content_type, body.body
         except _Timeout:
-            status, ctype = 408, "application/json"
+            status, ctype, result = 408, "application/json", "timeout"
             body = error_body("timeout", "The request took too long to arrive.")
         except AgentError as e:
-            status, ctype, body = e.status, "application/json", error_body(e.code, e.message)
+            status, ctype, result = e.status, "application/json", e.code
+            body = error_body(e.code, e.message)
         except Exception:
             log.exception("unhandled error in deck-agent request")
-            status, ctype = 500, "application/json"
+            status, ctype, result = 500, "application/json", "internal"
             body = error_body("internal", "Something went wrong.")
+        caller = self.caller
+        audit(config, actor=caller.username if caller else None,
+              acting_admin=caller.acting_admin if caller else None, verb=self.verb_name,
+              detail={"peer_uid": self.peer, "role": caller.role if caller else None},
+              result=result)
         head = (f"HTTP/1.1 {status} {REASONS.get(status, 'Error')}\r\n"
                 f"Content-Type: {ctype}\r\nContent-Length: {len(body)}\r\n"
                 "Connection: close\r\n\r\n").encode()
@@ -166,19 +179,20 @@ class _Handler(socketserver.BaseRequestHandler):
     def _dispatch(self, sock: socket.socket, deadline: float) -> bytes | RawResponse:
         server = self.server
         config = server.config
-        peer = _peer_uid(sock)
+        peer = self.peer = _peer_uid(sock)
         if peer not in (config.web_uid, config.worker_uid):
             raise AgentError("peer_not_allowed", "This account may not use deck-agent.", 403)
 
         reader = _Reader(sock, deadline)
         name, headers, length = _read_head(reader)
+        self.verb_name = name
         verb = server.verbs.get(name)
         if verb is None:
             raise AgentError("unknown_verb", f"No such verb: {name}", 404)
         if verb.body == "json" and length > config.max_json_bytes:
             raise AgentError("too_large", "The request body is too large.", 413)
 
-        caller = server.resolve(peer, headers, server.store, config)
+        caller = self.caller = server.resolve(peer, headers, server.store, config)
         if caller.role not in verb.allow:
             raise AgentError("not_allowed", "You are not allowed to do that.", 403)
 
