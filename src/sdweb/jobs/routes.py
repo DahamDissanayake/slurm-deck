@@ -104,7 +104,23 @@ def preview(body: LaunchIn, ctx: UserWrite, request: Request, db: Db, settings: 
     except ValueError as e:
         raise ApiError(422, "bad_spec", message=str(e)) from None
     return {"script": script, "problems": _check(ls, script, _qos(request, ctx), ctx, settings),
-            "warnings": []}
+            "warnings": _warnings(request, ctx, ls)}
+
+
+def _warnings(request: Request, ctx: SessionCtx, ls: Any) -> list[str]:
+    """Packages the script imports that the chosen environment lacks. Only a
+    hint: if the check can't run, there is simply no warning."""
+    env = ls.venv_path if ls.env_kind == "venv" else ls.conda_env
+    if ls.intent != "batch" or ls.env_kind not in ("prebuilt", "conda", "venv") \
+            or not env.startswith("/") or not ls.script.startswith("/"):
+        return []
+    try:
+        missing = request.app.state.agent.call(
+            "env.check_imports", {"env_path": env, "script_path": ls.script},
+            session=ctx.raw_token)["missing"]
+    except (AgentCallError, KeyError, TypeError):
+        return []
+    return [f"Python package '{m}' isn't in the chosen environment." for m in missing]
 
 
 @router.post("", status_code=201)

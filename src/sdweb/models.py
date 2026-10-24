@@ -203,6 +203,20 @@ class Upload(Base):
     grant_expires_at: Mapped[datetime] = mapped_column(TS)
 
 
+class EnvBuild(Base):
+    __tablename__ = "env_builds"
+    job_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"),
+                                            index=True)
+    kind: Mapped[str] = mapped_column(Text)
+    name: Mapped[str] = mapped_column(Text)
+    path: Mapped[str] = mapped_column(Text)
+    ok: Mapped[bool | None] = mapped_column(Boolean)
+    missing: Mapped[Any] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    created_at: Mapped[datetime] = _now()
+    finished_at: Mapped[datetime | None] = mapped_column(TS)
+
+
 class NotifySubscription(Base):
     __tablename__ = "notify_subscriptions"
     account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"),

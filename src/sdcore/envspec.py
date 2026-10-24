@@ -119,13 +119,14 @@ PYEOF"""
 def render_env_build(user: str, folder: str, home: str, *, kind: Literal["conda", "venv"],
                      name: str, dest: str, packages: str, requirements_path: str | None,
                      spec_path: str | None, partition: str = "",
-                     nfs_root: str = "/shared") -> str:
+                     nfs_root: str = "/shared", spec_text: str | None = None) -> str:
     """The sbatch script that builds an environment at dest.
 
     A conda build starts from spec_path when given (the file is read here for
     the names to verify, so it must be an admin-owned prebuilt spec) or from a
-    bare python. A venv build can't take a spec. packages are shell-split and
-    each word quoted.
+    bare python. spec_text, when given, is that spec's content, for a caller
+    that can't read the cluster's copy at spec_path. A venv build can't take a
+    spec. packages are shell-split and each word quoted.
     """
     if kind == "venv" and spec_path:
         raise ValueError("a venv can't be built from a conda spec")
@@ -134,7 +135,8 @@ def render_env_build(user: str, folder: str, home: str, *, kind: Literal["conda"
     words = shlex.split(packages)
     names = top_level_names(words)
     if spec_path:
-        names = top_level_names(parse_pip_deps(Path(spec_path).read_text())) + names
+        text = spec_text if spec_text is not None else Path(spec_path).read_text()
+        names = top_level_names(parse_pip_deps(text)) + names
 
     lines = ["#!/bin/bash", _directive("job-name", PurePosixPath(folder).name)]
     if partition:
