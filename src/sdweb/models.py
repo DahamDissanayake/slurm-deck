@@ -3,10 +3,12 @@ src/sdweb/migrations; these mirror it for the app's queries."""
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime
 from typing import Any
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     DateTime,
     Enum,
@@ -18,7 +20,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import CITEXT, INET, JSONB
+from sqlalchemy.dialects.postgresql import CITEXT, INET, JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 TS = DateTime(timezone=True)
@@ -181,6 +183,24 @@ class Template(Base):
     name: Mapped[str] = mapped_column(Text)
     spec: Mapped[Any] = mapped_column(JSONB)
     created_at: Mapped[datetime] = _now()
+
+
+class Upload(Base):
+    __tablename__ = "uploads"
+    __table_args__ = (Index("ix_uploads_account", "account_id"),)
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"))
+    dest_dir: Mapped[str] = mapped_column(Text)
+    filename: Mapped[str] = mapped_column(Text)
+    replace: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    size: Mapped[int] = mapped_column(BigInteger)
+    offset: Mapped[int] = mapped_column(BigInteger, server_default="0")
+    created_at: Mapped[datetime] = _now()
+    expires_at: Mapped[datetime] = mapped_column(TS)
+    finished_at: Mapped[datetime | None] = mapped_column(TS)
+    aborted_at: Mapped[datetime | None] = mapped_column(TS)
+    grant: Mapped[str] = mapped_column(Text)
+    grant_expires_at: Mapped[datetime] = mapped_column(TS)
 
 
 class NotifySubscription(Base):
