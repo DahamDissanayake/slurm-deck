@@ -9,15 +9,16 @@ import httpx
 
 
 class AgentCallError(Exception):
-    def __init__(self, code: str, message: str, status: int) -> None:
+    def __init__(self, code: str, message: str, status: int,
+                 data: dict[str, Any] | None = None) -> None:
         super().__init__(message)
-        self.code, self.message, self.status = code, message, status
+        self.code, self.message, self.status, self.data = code, message, status, data
 
 
 def _error(r: httpx.Response) -> AgentCallError:
     try:
         err = r.json()["error"]
-        return AgentCallError(err["code"], err["message"], r.status_code)
+        return AgentCallError(err["code"], err["message"], r.status_code, err.get("data"))
     except (ValueError, KeyError, TypeError):
         return AgentCallError("agent_error", "deck-agent sent an unexpected reply.",
                               r.status_code)

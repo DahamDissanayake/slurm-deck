@@ -160,3 +160,12 @@ def test_session_scope_commits_and_rolls_back(pg_db):
         names = set(s.scalars(select(Account.username).where(
             Account.username.in_(["orm", "gone"]))))
     assert names == {"orm"}
+
+
+@pytest.mark.pg
+def test_agent_reads_settings_through_its_view(pg_db):
+    from deckagent.sessions import PgSessionStore
+
+    store = PgSessionStore(pg_db.agent_dsn)
+    assert store.setting("extension_cap_hours") == 24
+    assert store.setting("maintenance_banner") is None and store.setting("nope") is None

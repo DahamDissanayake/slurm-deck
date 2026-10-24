@@ -70,6 +70,11 @@ class PgSessionStore:
         row = self._one(f"SELECT {_FIELDS} FROM agent_accounts WHERE username = %s", username)
         return _to_row(row, None) if row else None
 
+    def setting(self, key: str) -> Any:
+        """An admin setting from the agent_settings view (None when unset)."""
+        row = self._one("SELECT value FROM agent_settings WHERE key = %s", key)
+        return row[0] if row else None
+
 
 def _to_row(v: tuple[Any, ...], acting_as: str | None) -> SessionRow:
     return SessionRow(username=v[0], role=v[1], linux_kind=v[2], uid=v[3], status=v[4],

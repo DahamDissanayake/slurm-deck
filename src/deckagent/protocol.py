@@ -19,11 +19,13 @@ if TYPE_CHECKING:
 class AgentError(Exception):
     """An expected failure, sent to the caller as `code` and a plain message."""
 
-    def __init__(self, code: str, message: str, status: int) -> None:
+    def __init__(self, code: str, message: str, status: int,
+                 data: dict[str, Any] | None = None) -> None:
         super().__init__(message)
         self.code = code
         self.message = message
         self.status = status
+        self.data = data   # extra detail for the caller, e.g. over_cap's totals
 
 
 @dataclass(frozen=True)
@@ -46,6 +48,7 @@ class RequestContext:
     caller: Caller
     config: AgentConfig
     headers: Mapping[str, str]   # lower-cased names
+    store: Any = None            # the session store (also reads agent_settings)
 
 
 @dataclass(frozen=True)
@@ -65,8 +68,11 @@ REASONS = {200: "OK", 400: "Bad Request", 401: "Unauthorized", 403: "Forbidden",
            500: "Internal Server Error"}
 
 
-def error_body(code: str, message: str) -> bytes:
-    return json.dumps({"ok": False, "error": {"code": code, "message": message}}).encode()
+def error_body(code: str, message: str, data: dict[str, Any] | None = None) -> bytes:
+    error: dict[str, Any] = {"code": code, "message": message}
+    if data:
+        error["data"] = data
+    return json.dumps({"ok": False, "error": error}).encode()
 
 
 def json_response(data: Any) -> bytes:
