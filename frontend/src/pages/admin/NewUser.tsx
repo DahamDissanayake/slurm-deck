@@ -35,7 +35,8 @@ export function NewUser() {
   }
 
   const folder = preview?.existing_folder ?? null;
-  const ready = !!preview && preview.email_valid && !!username && !!fullName
+  const ready = !!preview && preview.email_valid && preview.username_valid
+    && !!username && !!fullName
     && (!folder || folderChoice !== "") && (folderChoice !== "other");
 
   async function submit(e: FormEvent) {
