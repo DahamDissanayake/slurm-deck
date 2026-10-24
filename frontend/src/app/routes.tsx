@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { AdminLayout } from "../pages/admin/AdminLayout";
 import { Apply } from "../pages/Apply";
 import { Environments } from "../pages/Environments";
+import { Files } from "../pages/Files";
 import { ForgotPassword } from "../pages/ForgotPassword";
 import { Home } from "../pages/Home";
 import { JobDetail } from "../pages/JobDetail";
@@ -25,7 +26,7 @@ const PUBLIC: [string, () => ReactNode][] = [
 
 // Every signed-in page; later phases replace the placeholders.
 const PAGES: [string, string][] = [
-  ["/files/*", "Files"], ["/files", "Files"], ["/models", "Models"],
+  ["/models", "Models"],
   ["/services", "Services"], ["/usage", "Usage"], ["/account/password", "Change password"],
 ];
 
@@ -40,6 +41,9 @@ export function App() {
   if (pathname === "/new") return <AppShell><NewJob /></AppShell>;
   if (pathname === "/notify") return <AppShell><Notify /></AppShell>;
   if (pathname === "/envs") return <AppShell><Environments /></AppShell>;
+  if (match("/files", pathname) || match("/files/*", pathname)) {
+    return <AppShell><Files /></AppShell>;
+  }
   const job = match("/jobs/:id", pathname);
   if (pathname === "/" || pathname === "/jobs" || job) {
     return (

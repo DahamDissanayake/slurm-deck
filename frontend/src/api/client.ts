@@ -15,7 +15,10 @@ export function setCsrf(token: string) {
   csrf = token;
 }
 
-type Init = Omit<RequestInit, "body"> & { json?: unknown };
+/** The current CSRF token, for requests made outside apiFetch (tus uploads). */
+export const csrfToken = () => csrf;
+
+type Init = RequestInit & { json?: unknown };
 
 const PUBLIC_PATHS = ["/sign-in", "/apply", "/set-password", "/reset-password",
                       "/forgot-password"];
@@ -28,7 +31,7 @@ export async function apiFetch<T = unknown>(path: string, init: Init = {}): Prom
   if (method !== "GET" && csrf) headers.set("X-CSRF-Token", csrf);
   const res = await fetch(path, {
     ...rest, method, headers, credentials: "same-origin",
-    body: json !== undefined ? JSON.stringify(json) : undefined,
+    body: json !== undefined ? JSON.stringify(json) : rest.body,
   });
   const data = await res.json().catch(() => ({}));
   if (res.ok) return data as T;
