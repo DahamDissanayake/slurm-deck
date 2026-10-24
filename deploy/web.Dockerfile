@@ -18,6 +18,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 COPY pyproject.toml README.md LICENSE ./
 COPY src ./src
+# Prebuilt env specs, read when an admin installs one (SD_ENV_SPEC_DIR).
+COPY deploy/cluster/envs ./cluster/envs
 # Installs the dependencies; PYTHONPATH then runs the code (with its data files,
 # such as the migrations) straight from /app/src.
 RUN pip install --no-cache-dir ".[web]"

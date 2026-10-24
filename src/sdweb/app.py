@@ -20,6 +20,7 @@ from sdweb.auth.routes import router as auth_router
 from sdweb.cluster import router as cluster_router
 from sdweb.config import WebSettings, load_settings
 from sdweb.deps import ApiError
+from sdweb.envs.routes import router as envs_router
 from sdweb.files.routes import router as files_router
 from sdweb.files.tus import router as uploads_router
 from sdweb.jobs.routes import router as jobs_router
@@ -48,7 +49,7 @@ def create_app(settings: WebSettings, agent: Any | None = None) -> FastAPI:
     app.include_router(allowlist_router)
     app.include_router(applications_router)
     for router in (cluster_router, jobs_router, templates_router, live_router,
-                   notify_router, uploads_router, files_router):
+                   notify_router, uploads_router, files_router, envs_router):
         app.include_router(router)
     return app
 
