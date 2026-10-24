@@ -42,6 +42,8 @@ class WebSettings:
     expiry_warn_minutes: int
     web_uid_min: int
     web_uid_max: int
+    nfs_root: str
+    partition: str
 
 
 def _int(env: Mapping[str, str], key: str, default: int) -> int:
@@ -103,4 +105,6 @@ def load_settings(env: Mapping[str, str]) -> WebSettings:
         expiry_warn_minutes=_int(env, "EXPIRY_WARN_MINUTES", 30),
         web_uid_min=_int(env, "SD_WEB_UID_MIN", 20000),
         web_uid_max=_int(env, "SD_WEB_UID_MAX", 59999),
+        nfs_root=env.get("SD_NFS_ROOT") or "/shared",
+        partition=env.get("SD_PARTITION") or "gpu",
     )

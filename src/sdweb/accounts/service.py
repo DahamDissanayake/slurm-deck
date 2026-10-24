@@ -76,11 +76,10 @@ def create_account(db: Session, *, admin: Account, session: str, agent: Any, ema
     if email_taken(db, email) or db.scalar(select(Account.id).where(
             Account.username == username)) is not None:
         raise ApiError(409, "account_exists", message="That email or username is already used.")
-    kind = "hidden"
+    kind, home = "hidden", None
     if attach_shell:
-        uid = int(agent_call(agent, "account.attach_shell", {"username": username},
-                             session)["uid"])
-        kind = "shell"
+        shell = agent_call(agent, "account.attach_shell", {"username": username}, session)
+        uid, kind, home = int(shell["uid"]), "shell", shell.get("home")
     elif reconnect_folder:
         info = agent_call(agent, "account.inspect_folder", {"username": username}, session)
         if not info.get("exists") or info.get("owner_uid") is None:
@@ -94,7 +93,7 @@ def create_account(db: Session, *, admin: Account, session: str, agent: Any, ema
 
     account = Account(email=email, full_name=full_name, username=username, role=role,
                       status="active", linux_kind=kind, uid=uid, created_by_id=admin.id,
-                      created_at=now)
+                      created_at=now, home=home)
     db.add(account)
     db.flush()
     send_link(db, account, "set", settings, now, mailer, kind=link_kind)
