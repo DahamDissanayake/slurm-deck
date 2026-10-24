@@ -48,13 +48,6 @@ def _fk(name: str, nullable: bool = True, ondelete: str | None = None) -> sa.Col
                      nullable=nullable)
 
 
-def _env_int(key: str, default: int) -> int:
-    raw = os.environ.get(key) or str(default)
-    if not raw.isdigit():
-        raise ValueError(f"{key} must be an integer, got {raw!r}")
-    return int(raw)
-
-
 def upgrade() -> None:
     op.execute("CREATE EXTENSION IF NOT EXISTS citext")
 
@@ -166,7 +159,8 @@ def upgrade() -> None:
 
     # New accounts' UIDs: never highest-plus-one, so a deleted account's UID
     # (and its files) are never handed to someone else.
-    lo, hi = _env_int("SD_WEB_UID_MIN", 20000), _env_int("SD_WEB_UID_MAX", 59999)
+    lo = int(os.environ.get("SD_WEB_UID_MIN") or 20000)
+    hi = int(os.environ.get("SD_WEB_UID_MAX") or 59999)
     op.execute(f"CREATE SEQUENCE web_uid_seq START {lo} MINVALUE {lo} MAXVALUE {hi} NO CYCLE")
 
     op.execute("""

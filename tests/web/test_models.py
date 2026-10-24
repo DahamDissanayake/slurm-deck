@@ -91,17 +91,11 @@ def test_one_pending_application_per_email(pg_db):
 
 
 @pytest.mark.pg
-def test_uid_sequence_starts_at_20000_and_never_cycles(pg_db):
+def test_uid_sequence_and_seeded_settings(pg_db):
     with _admin(pg_db) as conn:
         assert conn.execute("SELECT nextval('web_uid_seq')").fetchone()[0] == 20000
-        row = conn.execute("SELECT max_value, cycle FROM pg_sequences "
-                           "WHERE sequencename = 'web_uid_seq'").fetchone()
-        assert row == (59999, False)
-
-
-@pytest.mark.pg
-def test_settings_are_seeded(pg_db):
-    with _admin(pg_db) as conn:
+        assert conn.execute("SELECT max_value, cycle FROM pg_sequences "
+                            "WHERE sequencename = 'web_uid_seq'").fetchone() == (59999, False)
         rows = dict(conn.execute("SELECT key, value FROM settings").fetchall())
     assert rows["default_time_limit"] == "08:00:00" and rows["extension_cap_hours"] == 24
     assert rows["maintenance_banner"] is None and rows["mail_enabled"] is True

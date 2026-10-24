@@ -13,17 +13,13 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 TS = DateTime(timezone=True)
 
 
-def _enum(name: str, *values: str) -> Enum:
-    return Enum(*values, name=name)
-
-
-ROLE = _enum("account_role", "user", "admin")
-ACCOUNT_STATUS = _enum("account_status", "active", "disabled", "deleted")
-LINUX_KIND = _enum("linux_kind", "hidden", "shell")
-TOKEN_PURPOSE = _enum("token_purpose", "set", "reset")
-APPLICATION_STATUS = _enum("application_status", "pending", "approved", "rejected")
-ALLOW_KIND = _enum("allow_kind", "domain", "address")
-AUDIT_SOURCE = _enum("audit_source", "web", "agent", "worker")
+ROLE = Enum("user", "admin", name="account_role")
+ACCOUNT_STATUS = Enum("active", "disabled", "deleted", name="account_status")
+LINUX_KIND = Enum("hidden", "shell", name="linux_kind")
+TOKEN_PURPOSE = Enum("set", "reset", name="token_purpose")
+APPLICATION_STATUS = Enum("pending", "approved", "rejected", name="application_status")
+ALLOW_KIND = Enum("domain", "address", name="allow_kind")
+AUDIT_SOURCE = Enum("web", "agent", "worker", name="audit_source")
 
 
 class Base(DeclarativeBase):
