@@ -83,7 +83,14 @@ def _extra_files(raw: Any) -> dict[str, str]:
 
 @verb("job.submit", allow=PEOPLE)
 def submit(ctx: RequestContext, payload: dict[str, Any]) -> dict[str, Any]:
-    cfg, user = ctx.config, str(ctx.caller.username)
+    """as_ops (admins only): submit as sd-ops, for work on the shared areas
+    such as installing a prebuilt environment."""
+    cfg, user, caller = ctx.config, str(ctx.caller.username), ctx.caller
+    as_ops = payload.get("as_ops") is True
+    if as_ops and (caller.role != "admin" or caller.acting_admin):
+        raise AgentError("not_allowed", "Only admins can submit as the shared account.", 403)
+    if as_ops:
+        user = cfg.ops_user
     folder_name, script = str(payload.get("folder_name", "")), str(payload.get("script", ""))
     if not FOLDER_RE.fullmatch(folder_name) or folder_name in (".", ".."):
         raise AgentError("bad_folder", "That job folder name isn't allowed.", 422)
@@ -91,7 +98,7 @@ def submit(ctx: RequestContext, payload: dict[str, Any]) -> dict[str, Any]:
     if problems:
         raise AgentError("bad_script", "; ".join(problems), 422, {"problems": problems})
     extra = _extra_files(payload.get("extra_files"))
-    ident = _identity(ctx.caller, cfg)
+    ident = _ops_identity(caller, cfg) if as_ops else _identity(caller, cfg)
     folder = f"{user_job_root(cfg.nfs_root, user)}/{folder_name}"
     path = f"{folder}/job.sbatch"
     _as_user(ident, ["mkdir", "-p", "-m", "0770", folder])
