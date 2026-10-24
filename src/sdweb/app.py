@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
 
@@ -9,18 +11,22 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import sessionmaker
 
-from sdweb import db
+from sdweb import db, static
 from sdweb.accounts.allowlist import router as allowlist_router
 from sdweb.accounts.applications import router as applications_router
 from sdweb.accounts.routes import router as accounts_router
+from sdweb.agent import AgentClient
 from sdweb.auth.routes import router as auth_router
 from sdweb.cluster import router as cluster_router
-from sdweb.config import WebSettings
+from sdweb.config import WebSettings, load_settings
 from sdweb.deps import ApiError
 from sdweb.jobs.routes import router as jobs_router
 from sdweb.jobs.templates import router as templates_router
 from sdweb.live.routes import router as live_router
 from sdweb.notify.routes import router as notify_router
+
+# Where the image puts the built frontend (deploy/web.Dockerfile).
+STATIC_DIR = "/app/static"
 
 
 def create_app(settings: WebSettings, agent: Any | None = None) -> FastAPI:
@@ -42,4 +48,15 @@ def create_app(settings: WebSettings, agent: Any | None = None) -> FastAPI:
     for router in (cluster_router, jobs_router, templates_router, live_router,
                    notify_router):
         app.include_router(router)
+    return app
+
+
+def create_app_from_env(environ: Mapping[str, str] | None = None,
+                        static_dir: str = STATIC_DIR) -> FastAPI:
+    """The container's app (uvicorn --factory): settings from the environment,
+    the real deck-agent client, and the built frontend when it is there."""
+    settings = load_settings(os.environ if environ is None else environ)
+    app = create_app(settings, agent=AgentClient(settings.agent_socket))
+    if os.path.isdir(static_dir):
+        static.mount(app, static_dir)
     return app
