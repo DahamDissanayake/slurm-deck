@@ -4,7 +4,9 @@
     def status(ctx: RequestContext, payload: dict) -> Any: ...
 
 `allow` lists the caller roles that may call it. body="raw" hands the handler
-the request body as a stream instead of a decoded JSON object.
+the request body as a stream instead of a decoded JSON object. session=False
+skips session resolution (the handler authorises the request itself, e.g. an
+upload grant); `allow` is then not checked.
 """
 
 from __future__ import annotations
@@ -24,14 +26,15 @@ class Verb:
     allow: frozenset[str]
     body: str
     handler: Handler
+    session: bool = True
 
 
 class VerbRegistry:
     def __init__(self) -> None:
         self._verbs: dict[str, Verb] = {}
 
-    def verb(self, name: str, *, allow: frozenset[str],
-             body: str = "json") -> Callable[[Handler], Handler]:
+    def verb(self, name: str, *, allow: frozenset[str], body: str = "json",
+             session: bool = True) -> Callable[[Handler], Handler]:
         if not allow or not allow <= ROLES:
             raise ValueError(f"{name}: allow must be a non-empty subset of {sorted(ROLES)}")
         if body not in ("json", "raw"):
@@ -40,7 +43,7 @@ class VerbRegistry:
             raise ValueError(f"verb {name} is already registered")
 
         def register(handler: Handler) -> Handler:
-            self._verbs[name] = Verb(name, allow, body, handler)
+            self._verbs[name] = Verb(name, allow, body, handler, session)
             return handler
         return register
 

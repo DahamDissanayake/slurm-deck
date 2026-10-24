@@ -63,11 +63,11 @@ class AgentClient:
 
     def upload_chunk(self, upload_id: str, offset: int, data: Iterable[bytes], *, length: int,
                      grant: str) -> int:
-        """Stream one upload chunk (length bytes) to fs.write_chunk; the new staged size."""
+        """Stream one upload chunk (length bytes) to fs.write_chunk; the new offset."""
         headers = {"X-SD-Grant": grant, "X-SD-Upload": upload_id, "X-SD-Offset": str(offset),
                    "Content-Length": str(length), "Content-Type": "application/octet-stream"}
         with self._client() as c:
             r = c.post("/v1/fs.write_chunk", content=iter(data), headers=headers)
         if r.status_code != 200:
             raise _error(r)
-        return int(r.json()["data"]["size"])
+        return int(r.json()["data"]["offset"])

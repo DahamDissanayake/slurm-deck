@@ -22,6 +22,7 @@ import stat
 import sys
 import tarfile
 import tempfile
+import time
 import zipfile
 from collections.abc import Iterator
 from typing import IO, Any
@@ -220,6 +221,18 @@ def op_stage_abort(jail: Jail, a: argparse.Namespace) -> dict[str, Any]:
     return {}
 
 
+def op_stage_sweep(jail: Jail, a: argparse.Namespace) -> dict[str, Any]:
+    """Remove this user's staged uploads untouched for max_age_h hours."""
+    staging = os.path.join(jail.own, STAGING)
+    cutoff, removed = time.time() - a.max_age_h * 3600, 0
+    for name in os.listdir(staging) if os.path.isdir(staging) else []:
+        path = os.path.join(staging, name)
+        if name.endswith(".part") and os.lstat(path).st_mtime < cutoff:
+            os.unlink(path)
+            removed += 1
+    return {"removed": removed}
+
+
 def op_stage_finalize(jail: Jail, a: argparse.Namespace) -> dict[str, Any]:
     target = os.path.join(jail.write(a.dest_dir), check_name(a.filename))
     part = _part(jail, a.upload_id)
@@ -362,6 +375,7 @@ def _parser() -> argparse.ArgumentParser:
         "--replace", action="store_true")
     add("stage-abort", "upload_id")
     add("stage-size", "upload_id")
+    add("stage-sweep").add_argument("--max-age-h", type=int, default=24)
     add("extract", "archive", "dest_dir")
     return p
 

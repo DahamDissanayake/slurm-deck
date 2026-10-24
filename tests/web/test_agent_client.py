@@ -26,7 +26,7 @@ def socket_path(tmp_path):
     @registry.verb("fs.write_chunk", allow=frozenset({"user"}), body="raw")
     def _chunk(ctx, stream):
         assert ctx.headers["x-sd-grant"] == "g" and ctx.headers["x-sd-upload"] == "upl12345"
-        return {"size": int(ctx.headers["x-sd-offset"]) + len(stream.read())}
+        return {"offset": int(ctx.headers["x-sd-offset"]) + len(stream.read())}
 
     env = {"SD_AGENT_SOCKET": str(tmp_path / "a.sock"), "SD_WEB_UID": str(os.getuid()),
            "SD_WORKER_UID": "1", "SD_NFS_ROOT": str(tmp_path), "SD_AUDIT_LOG": str(tmp_path / "x")}

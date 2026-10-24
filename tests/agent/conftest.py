@@ -6,6 +6,7 @@ import sys
 import threading
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -33,6 +34,7 @@ class Agent:
     path: str
     log: Path
     dir: Path
+    config: Any
 
     def calls(self) -> str:
         return self.log.read_text() if self.log.exists() else ""
@@ -49,6 +51,7 @@ def agent(tmp_path, monkeypatch):
         pytest.skip("deck-agent needs Linux (AF_UNIX + SO_PEERCRED)")
     import deckagent.verbs.accounts  # noqa: F401  (registers the verbs)
     import deckagent.verbs.cluster  # noqa: F401
+    import deckagent.verbs.files  # noqa: F401
     from deckagent.config import load_config
     from deckagent.protocol import AgentError, Caller
     from deckagent.server import AgentServer
@@ -62,6 +65,7 @@ def agent(tmp_path, monkeypatch):
     monkeypatch.setenv("PATH", f"{bindir}:{os.environ['PATH']}")
     monkeypatch.setenv("FAKE_DIR", str(tmp_path))
     (tmp_path / "shared").mkdir()
+    (tmp_path / "grant.key").write_bytes(os.urandom(32))
 
     def resolve(peer, headers, store, config):
         token = headers.get("x-sd-session", "")
@@ -75,12 +79,13 @@ def agent(tmp_path, monkeypatch):
     env = {"SD_AGENT_SOCKET": str(tmp_path / "agent.sock"), "SD_WEB_UID": str(os.getuid()),
            "SD_WORKER_UID": "1", "SD_SLURM_BIN": str(bindir), "SD_COMPUTE_NODE": "gpu1",
            "SD_NFS_ROOT": str(tmp_path / "shared"), "SD_AUDIT_LOG": str(tmp_path / "audit"),
-           "SD_GPU_HELPER_SSH": "sdprov@gpu-host", "SD_GPU_HELPER_KEY": "/k"}
+           "SD_GPU_HELPER_SSH": "sdprov@gpu-host", "SD_GPU_HELPER_KEY": "/k",
+           "SD_GRANT_KEY_FILE": str(tmp_path / "grant.key")}
     server = AgentServer(load_config(env), store=None, resolve=resolve)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
-        yield Agent(env["SD_AGENT_SOCKET"], log, tmp_path)
+        yield Agent(env["SD_AGENT_SOCKET"], log, tmp_path, server.config)
     finally:
         server.shutdown()
         thread.join(5)
