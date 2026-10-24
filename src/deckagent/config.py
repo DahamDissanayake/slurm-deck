@@ -33,6 +33,7 @@ class AgentConfig:
     request_deadline_s: int
     max_json_bytes: int
     upload_resume_hours: int
+    session_ports: tuple[int, int] = (8800, 8999)
 
 
 def _int(env: Mapping[str, str], key: str, default: int | None = None) -> int:
@@ -45,6 +46,18 @@ def _int(env: Mapping[str, str], key: str, default: int | None = None) -> int:
         return int(raw)
     except ValueError:
         raise ValueError(f"{key} must be an integer, got {raw!r}") from None
+
+
+def _port_range(env: Mapping[str, str]) -> tuple[int, int]:
+    raw = env.get("SESSION_PORT_RANGE") or "8800-8999"
+    lo, _, hi = raw.partition("-")
+    try:
+        ports = int(lo), int(hi)
+    except ValueError:
+        raise ValueError(f"SESSION_PORT_RANGE must look like 8800-8999, got {raw!r}") from None
+    if not 1024 <= ports[0] <= ports[1] <= 65535:
+        raise ValueError(f"SESSION_PORT_RANGE must be unprivileged ports, low-high: {raw!r}")
+    return ports
 
 
 def load_config(env: Mapping[str, str]) -> AgentConfig:
@@ -75,4 +88,5 @@ def load_config(env: Mapping[str, str]) -> AgentConfig:
         request_deadline_s=_int(env, "SD_REQUEST_DEADLINE_S", 30),
         max_json_bytes=_int(env, "SD_MAX_JSON_BYTES", 1024 * 1024),
         upload_resume_hours=_int(env, "UPLOAD_RESUME_HOURS", 24),
+        session_ports=_port_range(env),
     )

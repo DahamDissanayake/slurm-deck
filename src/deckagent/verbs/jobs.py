@@ -10,12 +10,14 @@ import sys
 import threading
 from typing import Any
 
+from deckagent.audit import audit
 from deckagent.config import AgentConfig
 from deckagent.identity import PosixIdentity, identity_for_user, ops_identity
 from deckagent.protocol import AgentError, Caller, RawResponse, RequestContext
 from deckagent.runas import run_as
 from deckagent.slurmcmd import run_slurm
 from deckagent.verbs import files, verb
+from sdcore.connect import parse_session_line
 from sdcore.slurmparse import (
     SACCT_FORMAT,
     SQUEUE_FORMAT,
@@ -32,6 +34,8 @@ DEFAULT_CAP_HOURS = 24
 LIVE_STATES = frozenset({"PENDING", "RUNNING", "SUSPENDED", "CONFIGURING", "COMPLETING",
                          "REQUEUED", "RESIZING"})
 LOG_MAX = 1024 * 1024
+EXTRA_FILES = frozenset({"tbguard.py"})
+EXTRA_MAX = 64 * 1024
 _WRITE = ("import os, sys; fd = os.open(sys.argv[1], os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o640);"
           " os.write(fd, sys.stdin.buffer.read())")
 
@@ -67,6 +71,16 @@ def _as_user(ident: PosixIdentity, argv: list[str], data: bytes | None = None) -
                          500)
 
 
+def _extra_files(raw: Any) -> dict[str, str]:
+    """Files written next to job.sbatch: only the TensorBoard token guard."""
+    if raw is None:
+        return {}
+    if (not isinstance(raw, dict) or not set(raw) <= EXTRA_FILES
+            or not all(isinstance(v, str) and len(v) <= EXTRA_MAX for v in raw.values())):
+        raise AgentError("bad_extra_file", "Only tbguard.py can be added to a job folder.", 422)
+    return dict(raw)
+
+
 @verb("job.submit", allow=PEOPLE)
 def submit(ctx: RequestContext, payload: dict[str, Any]) -> dict[str, Any]:
     cfg, user = ctx.config, str(ctx.caller.username)
@@ -76,11 +90,14 @@ def submit(ctx: RequestContext, payload: dict[str, Any]) -> dict[str, Any]:
     problems = validate_sbatch(script, user, nfs_root=cfg.nfs_root)
     if problems:
         raise AgentError("bad_script", "; ".join(problems), 422, {"problems": problems})
+    extra = _extra_files(payload.get("extra_files"))
     ident = _identity(ctx.caller, cfg)
     folder = f"{user_job_root(cfg.nfs_root, user)}/{folder_name}"
     path = f"{folder}/job.sbatch"
     _as_user(ident, ["mkdir", "-p", "-m", "0770", folder])
     _as_user(ident, [sys.executable, "-c", _WRITE, path], script.encode())
+    for name, text in extra.items():
+        _as_user(ident, [sys.executable, "-c", _WRITE, f"{folder}/{name}"], text.encode())
     out = run_slurm(cfg, ["sbatch", "--parsable", path], as_ident=ident, timeout=30)
     return {"job_id": out.strip().split(";")[0], "folder": folder}
 
@@ -217,6 +234,60 @@ def joblog_read(ctx: RequestContext, payload: dict[str, Any]) -> RawResponse:
     return RawResponse(content_type="text/plain; charset=utf-8", headers={"X-SD-Size": str(size)},
                        chunks=files._stream(ident, files._argv(ctx.config, "read", who, path,
                                                                opts=opts)))
+
+
+def _node_names(ctx: RequestContext, nodelist: str) -> set[str]:
+    """The job's node by every name the SD_SESSION line may use for it."""
+    if not nodelist or nodelist == "(null)":
+        return set()
+    names = {nodelist}
+    out = run_slurm(ctx.config, ["scontrol", "show", "node", nodelist, "--oneliner"])
+    for token in out.split():
+        key, _, value = token.partition("=")
+        if key in ("NodeAddr", "NodeHostName") and value:
+            names.add(value)
+    return names
+
+
+@verb("session.info", allow=PEOPLE)
+def session_info(ctx: RequestContext, payload: dict[str, Any]) -> dict[str, Any]:
+    """Where an interactive job's service listens, from the SD_SESSION line in
+    the owner's own output (read as the owner, or as sd-ops for an admin). The
+    line is trusted only if it names the job's allocated node and a session
+    port, so a job can't point the proxy at another host or service."""
+    job_id = _job_id(payload)
+    f = _show(ctx, job_id)
+    cfg, caller, owner = ctx.config, ctx.caller, f["_owner"]
+    path, folder = f.get("StdOut", ""), f.get("WorkDir", "")
+    if not path or not in_user_job_jail(path, cfg.nfs_root, owner):
+        raise AgentError("not_found", "This job has no session output.", 404)
+    if owner == caller.username:
+        ident, who = _identity(caller, cfg), ["--user", owner]
+    else:   # an admin opening someone else's session
+        ident, who = _ops_identity(caller, cfg), ["--user", owner, "--admin"]
+        audit(cfg, actor=caller.username, acting_admin=caller.acting_admin, verb="session.info",
+              target=job_id, detail={"owner": owner}, result="ok")
+    out: dict[str, Any] = {"state": f.get("JobState", ""), "ready": False, "kind": None,
+                           "node": None, "port": None, "token": None}
+    opts = ("--offset", "0", "--limit", str(LOG_MAX))
+    text = b"".join(files._stream(ident, files._argv(cfg, "read", who, path, opts=opts)))
+    info = parse_session_line(text.decode(errors="replace"))
+    if info is None:
+        return out
+    if info.node not in _node_names(ctx, f.get("NodeList", "")):
+        raise AgentError("session_mismatch",
+                         "This job's session doesn't point at the node it runs on.", 409)
+    lo, hi = cfg.session_ports
+    if not lo <= info.port <= hi:
+        raise AgentError("session_port_refused",
+                         f"Port {info.port} is outside the session ports ({lo}-{hi}).", 409)
+    try:
+        files._run(ident, files._argv(cfg, "stat", who, f"{folder}/.sd-ready"))
+        marked = True
+    except AgentError:
+        marked = False
+    return {**out, "ready": marked and out["state"] == "RUNNING", "kind": info.kind,
+            "node": info.node, "port": info.port, "token": info.token}
 
 
 @verb("qos.limits", allow=PEOPLE)
