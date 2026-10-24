@@ -47,6 +47,19 @@ def load_session(db: Session, raw: str, settings: WebSettings,
     return row, account
 
 
+def peek_session(db: Session, raw: str, settings: WebSettings,
+                 now: datetime) -> tuple[WebSession, Account] | None:
+    """Like load_session, but changes nothing: a background check (the live
+    socket) mustn't keep an idle session alive."""
+    row = db.get(WebSession, hash_token(raw)) if raw else None
+    account = db.get(Account, row.account_id) if row else None
+    if (row is None or account is None or account.status != "active"
+            or now - row.last_seen_at > timedelta(minutes=settings.session_idle_minutes)
+            or now - row.created_at > timedelta(hours=settings.session_max_hours)):
+        return None
+    return row, account
+
+
 def end_sessions(db: Session, account_id: int, *, keep: str | None = None) -> None:
     """Delete every session of an account, except the one with token hash keep."""
     q = delete(WebSession).where(WebSession.account_id == account_id)
