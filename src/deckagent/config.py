@@ -18,6 +18,8 @@ class AgentConfig:
     admin_group: str
     ops_user: str
     slurm_bin: str
+    slurm_account: str
+    slurm_qos: str
     partition: str
     compute_node: str
     stats_file: str
@@ -57,6 +59,8 @@ def load_config(env: Mapping[str, str]) -> AgentConfig:
         admin_group=env.get("SD_ADMIN_GROUP") or "gpuadmins",
         ops_user=env.get("SD_OPS_USER") or "sd-ops",
         slurm_bin=env.get("SD_SLURM_BIN") or "/usr/bin",
+        slurm_account=env.get("SD_SLURM_ACCOUNT") or "default",
+        slurm_qos=env.get("SD_SLURM_QOS") or "normal",
         partition=env.get("SD_PARTITION") or "gpu",
         compute_node=env.get("SD_COMPUTE_NODE", ""),
         stats_file=env.get("SD_STATS_FILE") or f"{nfs_root.rstrip('/')}/.gpu_stats.json",
