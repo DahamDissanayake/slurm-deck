@@ -32,7 +32,15 @@ from sdweb.deps import (
     require_csrf,
     require_user,
 )
-from sdweb.jobs.service import build_script, node_stats, setting, spec_from
+from sdweb.jobs.service import (
+    SESSION_INTENTS,
+    build_script,
+    extra_files,
+    node_stats,
+    open_url,
+    setting,
+    spec_from,
+)
 from sdweb.models import Account, Job
 
 router = APIRouter(prefix="/api/jobs")
@@ -80,10 +88,17 @@ def defaults(ctx: User, request: Request, db: Db, intent: str = "batch") -> dict
             "terminal_enabled": bool(setting(db, "terminal_jobs_enabled", True))}
 
 
+def _allowed(db: Db, ls: Any) -> None:
+    if ls.intent == "terminal" and not setting(db, "terminal_jobs_enabled", True):
+        raise ApiError(403, "terminal_disabled",
+                       message="Terminal sessions are turned off on this cluster.")
+
+
 @router.post("/preview")
-def preview(body: LaunchIn, ctx: UserWrite, request: Request, settings: Settings,
+def preview(body: LaunchIn, ctx: UserWrite, request: Request, db: Db, settings: Settings,
             now: Now) -> dict:
     ls = spec_from(body.model_dump())
+    _allowed(db, ls)
     try:
         script, _ = build_script(ctx.effective_account, ls, settings, now)
     except ValueError as e:
@@ -103,6 +118,7 @@ def submit(body: LaunchIn, ctx: UserWrite, request: Request, db: Db, settings: S
         raise ApiError(429, "rate_limited", message=f"You've submitted {recent} jobs in the "
                        f"last hour; the limit is {limit}.")
     ls = spec_from(body.model_dump())
+    _allowed(db, ls)
     try:
         script, folder_name = build_script(account, ls, settings, now)
     except ValueError as e:
@@ -110,7 +126,10 @@ def submit(body: LaunchIn, ctx: UserWrite, request: Request, db: Db, settings: S
     problems = _check(ls, script, _qos(request, ctx), ctx, settings)
     if problems:
         raise ApiError(422, "bad_spec", message="; ".join(problems), problems=problems)
-    out = _call(request, ctx, "job.submit", {"folder_name": folder_name, "script": script})
+    payload: dict[str, Any] = {"folder_name": folder_name, "script": script}
+    if extra := extra_files(ls.intent):
+        payload["extra_files"] = extra
+    out = _call(request, ctx, "job.submit", payload)
     db.add(Job(job_id=out["job_id"], account_id=account.id, kind=ls.intent,
                name=folder_name, folder=out["folder"], spec=asdict(ls), script=script,
                submitted_at=now))
@@ -149,6 +168,18 @@ def _read(request: Request, ctx: SessionCtx, job_id: str, stream: str) -> bytes:
         return b""
 
 
+def _session(request: Request, ctx: SessionCtx, job_id: str, kind: str) -> dict:
+    """Whether the session is up and where to open it. Its node, port and
+    token stay on the server; the proxy looks them up itself."""
+    try:
+        info = request.app.state.agent.call("session.info", {"job_id": job_id},
+                                            session=ctx.raw_token)
+    except AgentCallError as e:
+        return {"kind": kind, "ready": False, "open_url": None, "error": e.message}
+    ready = bool(info.get("ready"))
+    return {"kind": kind, "ready": ready, "open_url": open_url(kind, job_id) if ready else None}
+
+
 @router.get("/{job_id}")
 def detail(job_id: str, ctx: User, request: Request, db: Db) -> dict:
     info = _call(request, ctx, "job.show", {"job_id": job_id})
@@ -157,7 +188,9 @@ def detail(job_id: str, ctx: User, request: Request, db: Db) -> dict:
     out: dict[str, Any] = {**info, "kind": row.kind if row else "batch",
                            "folder": row.folder if row else None,
                            "script": row.script if row else None, "explanation": None,
-                           "smoke": None}
+                           "smoke": None, "session": None}
+    if row is not None and row.kind in SESSION_INTENTS:
+        out["session"] = _session(request, ctx, job_id, row.kind)
     if info.get("state") in FAILED:
         err = _read(request, ctx, job_id, "err")[-TAIL:].decode(errors="replace")
         out["explanation"] = explain_failure(err, mem_gb=int(spec.get("mem_gb", 0)),

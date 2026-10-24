@@ -44,6 +44,8 @@ class WebSettings:
     web_uid_max: int
     nfs_root: str
     partition: str
+    jupyter_env: str = "/shared/envs/jupyter"
+    session_ports: tuple[int, int] = (8800, 8999)
 
 
 def _int(env: Mapping[str, str], key: str, default: int) -> int:
@@ -65,6 +67,18 @@ def _bool(env: Mapping[str, str], key: str, default: bool) -> bool:
     if raw in ("0", "false", "no", "off"):
         return False
     raise ValueError(f"{key} must be true or false, got {raw!r}")
+
+
+def _port_range(env: Mapping[str, str]) -> tuple[int, int]:
+    raw = env.get("SESSION_PORT_RANGE") or "8800-8999"
+    lo, _, hi = raw.partition("-")
+    try:
+        ports = int(lo), int(hi)
+    except ValueError:
+        raise ValueError(f"SESSION_PORT_RANGE must look like 8800-8999, got {raw!r}") from None
+    if not 1024 <= ports[0] <= ports[1] <= 65535:
+        raise ValueError(f"SESSION_PORT_RANGE must be unprivileged ports, low-high: {raw!r}")
+    return ports
 
 
 def load_settings(env: Mapping[str, str]) -> WebSettings:
@@ -107,4 +121,7 @@ def load_settings(env: Mapping[str, str]) -> WebSettings:
         web_uid_max=_int(env, "SD_WEB_UID_MAX", 59999),
         nfs_root=env.get("SD_NFS_ROOT") or "/shared",
         partition=env.get("SD_PARTITION") or "gpu",
+        jupyter_env=env.get("SD_JUPYTER_ENV")
+        or f"{(env.get('SD_NFS_ROOT') or '/shared').rstrip('/')}/envs/jupyter",
+        session_ports=_port_range(env),
     )
