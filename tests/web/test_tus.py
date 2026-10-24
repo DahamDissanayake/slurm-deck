@@ -150,22 +150,47 @@ def test_delete_aborts(tus):
     assert c.head(url).status_code == 404
 
 
+def _asgi_patch(app, c, url, size, pieces):
+    """PATCH straight through ASGI, the body arriving in pieces as a server
+    would deliver it (TestClient reads the whole body into memory first)."""
+    import anyio
+
+    headers = [(b"host", b"testserver"), (b"tus-resumable", b"1.0.0"),
+               (b"cookie", f"sd_session={c.cookies.get('sd_session')}".encode()),
+               (b"x-csrf-token", c.headers["X-CSRF-Token"].encode()),
+               (b"content-type", b"application/offset+octet-stream"),
+               (b"upload-offset", b"0"), (b"content-length", str(size).encode())]
+    scope = {"type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1",
+             "method": "PATCH", "scheme": "https", "path": url, "raw_path": url.encode(),
+             "query_string": b"", "root_path": "", "headers": headers,
+             "client": ("10.0.0.9", 50000), "server": ("testserver", 443)}
+    it = iter(pieces)
+    sent: list[dict] = []
+
+    async def receive():
+        piece = next(it, None)
+        return {"type": "http.request", "body": piece or b"", "more_body": piece is not None}
+
+    async def send(message):
+        sent.append(message)
+
+    anyio.run(app, scope, receive, send)
+    return sent[0]
+
+
 def test_patch_streams_64_mb_with_bounded_memory(tus):
     app, _, c = tus
     app.state.agent = TusAgent(count_only=True)
     size = 64 * MB
     url = _create(c, size)
-
-    def body():
-        block = b"\0" * MB
-        for _ in range(64):
-            yield block
+    block = b"\0" * MB
 
     tracemalloc.start()
     try:
-        r = _patch(c, url, 0, body(), length=size)
+        start = _asgi_patch(app, c, url, size, (block for _ in range(64)))
         _, peak = tracemalloc.get_traced_memory()
     finally:
         tracemalloc.stop()
-    assert r.status_code == 204 and r.headers["Upload-Offset"] == str(size)
+    assert start["status"] == 204, start
+    assert (b"upload-offset", str(size).encode()) in start["headers"]
     assert peak < 16 * MB
