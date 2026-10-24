@@ -6,7 +6,18 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, Integer, Text, func, text
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Index,
+    Integer,
+    Text,
+    UniqueConstraint,
+    func,
+    text,
+)
 from sqlalchemy.dialects.postgresql import CITEXT, INET, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -44,6 +55,7 @@ class Account(Base):
     created_at: Mapped[datetime] = _now()
     created_by_id: Mapped[int | None] = mapped_column(ForeignKey("accounts.id"))
     last_login_at: Mapped[datetime | None] = mapped_column(TS)
+    home: Mapped[str | None] = mapped_column(Text)   # None: /home/<username>
 
 
 class WebSession(Base):
@@ -142,3 +154,30 @@ class OutboxMessage(Base):
     next_attempt_at: Mapped[datetime] = _now()
     sent_at: Mapped[datetime | None] = mapped_column(TS)
     last_error: Mapped[str | None] = mapped_column(Text)
+
+
+class Job(Base):
+    __tablename__ = "jobs"
+    __table_args__ = (Index("ix_jobs_account_submitted", "account_id", "submitted_at"),)
+    job_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"))
+    kind: Mapped[str] = mapped_column(Text)
+    name: Mapped[str] = mapped_column(Text)
+    folder: Mapped[str] = mapped_column(Text)
+    spec: Mapped[Any] = mapped_column(JSONB)
+    script: Mapped[str] = mapped_column(Text)
+    submitted_at: Mapped[datetime] = _now()
+    time_limit_s: Mapped[int | None] = mapped_column(Integer)
+    last_state: Mapped[str | None] = mapped_column(Text)
+    last_seen_at: Mapped[datetime | None] = mapped_column(TS)
+    warned_at: Mapped[datetime | None] = mapped_column(TS)
+
+
+class Template(Base):
+    __tablename__ = "templates"
+    __table_args__ = (UniqueConstraint("account_id", "name", name="uq_templates_account_name"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(Text)
+    spec: Mapped[Any] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = _now()

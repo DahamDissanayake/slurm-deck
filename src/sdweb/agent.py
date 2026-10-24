@@ -62,6 +62,27 @@ class AgentClient:
                 raise _error(r)
             yield from r.iter_bytes()
 
+    def stream_with_headers(self, verb: str, payload: dict[str, Any] | None = None, *,
+                            session: str | None = None
+                            ) -> tuple[dict[str, str], Iterator[bytes]]:
+        """A streaming verb's reply headers, and its body piece by piece."""
+        client = self._client()
+        r = client.send(client.build_request("POST", f"/v1/{verb}", json=payload or {},
+                                             headers=self._headers(session)), stream=True)
+        if r.status_code != 200:
+            r.read()
+            r.close()
+            client.close()
+            raise _error(r)
+
+        def body() -> Iterator[bytes]:
+            try:
+                yield from r.iter_bytes()
+            finally:
+                r.close()
+                client.close()
+        return dict(r.headers), body()
+
     def upload_chunk(self, upload_id: str, offset: int, data: Iterable[bytes], *, length: int,
                      grant: str) -> int:
         """Stream one upload chunk (length bytes) to fs.write_chunk; the new offset."""

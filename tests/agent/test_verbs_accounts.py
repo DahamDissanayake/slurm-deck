@@ -87,7 +87,8 @@ def test_attach_shell_refuses_webusers_and_unknown(agent, monkeypatch):
     monkeypatch.setattr(accounts, "_lookup",
                         lambda name: (accounts.PosixIdentity(name, 1500, 1500, (), "/h"),
                                       frozenset({"gpuusers"})))
-    assert agent.call("account.attach_shell", {"username": "kamal"}, as_=ADMIN) == {"uid": 1500}
+    assert agent.call("account.attach_shell", {"username": "kamal"}, as_=ADMIN) == {
+        "uid": 1500, "home": "/h"}
     monkeypatch.setattr(accounts, "_lookup",
                         lambda name: (accounts.PosixIdentity(name, 1500, 1500, (), "/h"),
                                       frozenset({"webusers"})))

@@ -134,7 +134,7 @@ def attach_shell(ctx: RequestContext, payload: dict[str, Any]) -> dict[str, Any]
     blocked = PRIVILEGED_GROUPS | {ctx.config.admin_group, ctx.config.webusers_group}
     if ident.uid < UID_FLOOR or groups & blocked:
         raise AgentError("not_attachable", f"{name} can't be attached to the web.", 403)
-    return {"uid": ident.uid}
+    return {"uid": ident.uid, "home": ident.home}
 
 
 @verb("account.delete", allow=ADMIN)
