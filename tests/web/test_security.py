@@ -82,3 +82,10 @@ def test_record_writes_audit_events(pg_db):
         got = [(r.action, r.target, r.detail, r.result, r.source) for r in rows]
     assert got == [("account.create", "amasha", {"role": "user"}, "ok", "web"),
                    ("mail.send", "", {}, "failed", "worker")]
+
+
+def test_common_list_loads_in_full():
+    from sdweb.security import _common
+
+    words = _common()
+    assert len(words) >= 10000 and {"password", "123456", "unbelievable"} <= words

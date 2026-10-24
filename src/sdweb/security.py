@@ -39,7 +39,7 @@ def needs_rehash(hash: str) -> bool:
 @cache
 def _common() -> frozenset[str]:
     lines = COMMON_PASSWORDS.read_text(encoding="utf-8").splitlines()
-    return frozenset(x for x in lines if x and not x.startswith("#"))
+    return frozenset(w for line in lines if not line.startswith("#") for w in line.split())
 
 
 def password_problems(pw: str, *, email: str, username: str) -> list[str]:
