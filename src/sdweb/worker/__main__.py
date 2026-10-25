@@ -1,6 +1,6 @@
-"""Worker loop: drain the mail outbox every 10 seconds, every minute send
-expiry warnings and notify-when-free mail, and every 10 minutes check the disk.
-One failing pass is logged and the loop carries on."""
+"""Worker loop: drain the mail outbox every 10 seconds, and every minute send
+expiry warnings and notify-when-free mail. One failing pass is logged and the
+loop carries on."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ log = logging.getLogger("sdweb.worker")
 
 INTERVAL_S = 10
 EVERY_MINUTE = 6   # ticks
-EVERY_10_MINUTES = 60
+EVERY_10_MINUTES = 60   # the disk check
 
 
 def _pass(name: str, fn: Callable[..., Any], *args: Any) -> None:
