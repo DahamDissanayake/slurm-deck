@@ -30,6 +30,7 @@ from typing import IO, Any
 from sdcore.validate import user_browse_roots, user_job_root, user_upload_root
 
 CHUNK = 1024 * 1024
+GIB = 2**30
 STAGING = ".sd-uploads"
 UPLOAD_ID = re.compile(r"[A-Za-z0-9_-]{8,64}")
 ARCHIVES = (".zip", ".tar", ".tar.gz", ".tgz", ".tar.xz")
@@ -280,6 +281,24 @@ def _tar_members(t: tarfile.TarFile, dest: str) -> Iterator[tuple[str, bool, Any
         yield _landing(dest, m.name), m.isdir(), m
 
 
+def _declared(m: Any) -> int:
+    """The unpacked size an archive member says it has."""
+    return int(m.file_size if isinstance(m, zipfile.ZipInfo) else m.size)
+
+
+def _copy_member(data: IO[bytes], target: str, declared: int, name: str) -> None:
+    """Write one member to a new file, refusing (and removing the file) if it
+    holds more bytes than it declared."""
+    with open(target, "xb") as out:
+        try:
+            if _copy(data, out, declared + 1) > declared:
+                raise Refused(f"The archive member {name!r} is larger than it says.")
+        except BaseException:
+            out.close()
+            os.unlink(target)
+            raise
+
+
 def op_extract(jail: Jail, a: argparse.Namespace) -> dict[str, Any]:
     archive, dest = jail.read(a.archive), jail.write(a.dest_dir)
     lower = archive.lower()
@@ -296,9 +315,17 @@ def op_extract(jail: Jail, a: argparse.Namespace) -> dict[str, Any]:
                 yield from _tar_members(t, dest)
 
     # First pass checks every member, so a bad archive extracts nothing.
-    for target, is_dir, _ in members():
+    total = 0
+    for target, is_dir, m in members():
         if not is_dir and os.path.lexists(target):
             raise Refused(f"{os.path.relpath(target, dest)} already exists.")
+        total += 0 if is_dir else _declared(m)
+    if a.max_bytes is not None and total > a.max_bytes:
+        raise Refused(f"That archive is too large to extract here ({total} bytes unpacked).")
+    st = os.statvfs(dest)
+    if total + a.margin > st.f_bavail * st.f_frsize:
+        raise Refused("There isn't enough free space on the cluster to extract that archive "
+                      f"({total} bytes unpacked).")
     count = 0
     opener: Any = zipfile.ZipFile(archive) if is_zip else tarfile.open(archive, "r:*")
     with opener as src:
@@ -308,8 +335,8 @@ def op_extract(jail: Jail, a: argparse.Namespace) -> dict[str, Any]:
                 continue
             os.makedirs(os.path.dirname(target), exist_ok=True)
             data = src.open(m) if is_zip else src.extractfile(m)
-            with data, open(target, "xb") as out:
-                _copy(data, out)
+            with data:
+                _copy_member(data, target, _declared(m), os.path.relpath(target, dest))
             count += 1
     return {"files": count}
 
@@ -376,7 +403,9 @@ def _parser() -> argparse.ArgumentParser:
     add("stage-abort", "upload_id")
     add("stage-size", "upload_id")
     add("stage-sweep").add_argument("--max-age-h", type=int, default=24)
-    add("extract", "archive", "dest_dir")
+    x = add("extract", "archive", "dest_dir")
+    x.add_argument("--max-bytes", type=int)            # optional cap on the unpacked total
+    x.add_argument("--margin", type=int, default=GIB)  # free space left after extracting
     return p
 
 
