@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 RESIZE_SCRIPT = "/opt/slurm-deck-web/deploy/cluster/resize-pods.sh"
+ADMINS_FILE = "/etc/slurm-deck-web/admins"
 
 
 @dataclass(frozen=True)
@@ -37,6 +38,7 @@ class AgentConfig:
     upload_resume_hours: int
     session_ports: tuple[int, int] = (8800, 8999)
     resize_script: str = RESIZE_SCRIPT
+    admins_file: str = ADMINS_FILE
 
 
 def _int(env: Mapping[str, str], key: str, default: int | None = None) -> int:
@@ -93,4 +95,5 @@ def load_config(env: Mapping[str, str]) -> AgentConfig:
         upload_resume_hours=_int(env, "UPLOAD_RESUME_HOURS", 24),
         session_ports=_port_range(env),
         resize_script=env.get("SD_RESIZE_SCRIPT") or RESIZE_SCRIPT,
+        admins_file=env.get("SD_ADMINS_FILE") or ADMINS_FILE,
     )

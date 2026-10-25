@@ -274,6 +274,14 @@ def _values(ctx: Ctx) -> dict[str, Any]:
             "db_password": ctx.secret("db_password"), "agent_db_password": ctx.secret("agent_db_password")}
 
 
+def admins_add_cmd(path: str, username: str, owner: str = "root:root") -> str:
+    """List username in deck-agent's admins file (root 0644), once, keeping the others.
+    deck-agent gives the admin role only to names in this file."""
+    p, u = shlex.quote(path), shlex.quote(username)
+    return (f"touch {p} && chown {owner} {p} && chmod 0644 {p} "
+            f"&& (grep -qxF -- {u} {p} || printf '%s\\n' {u} >> {p})")
+
+
 def secrets_step(ctx: Ctx) -> None:
     v, admin = _values(ctx), ctx.answers["admin_unix_user"]
     web_owner = f"{admin}:sdweb"
@@ -284,6 +292,7 @@ def secrets_step(ctx: Ctx) -> None:
     ctx.login.write(f"{CONF}/web.env", render("web.env.tmpl", v), "0640", web_owner)
     ctx.login.write(f"{CONF}/secrets.env", render("secrets.env.tmpl", v), "0640", web_owner)
     ctx.login.write(str(ctx.repo / "deploy/.env"), render("compose.env.tmpl", v), "0640", web_owner)
+    ctx.login.run(admins_add_cmd(f"{CONF}/admins", ctx.answers["admin_username"]))
 
 
 def agent(ctx: Ctx) -> None:

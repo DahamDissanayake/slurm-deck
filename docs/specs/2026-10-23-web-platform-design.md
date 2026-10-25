@@ -292,7 +292,11 @@ service. Everything user-facing is containerised.
   raise a TimeLimit) **after** checking: job belongs to the user (or caller is
   admin), new total ≤ extension cap, new total ≤ partition MaxTime.
 - Admin verbs require the session's account to have the admin role, checked by
-  deck-agent from the DB, not from `web`.
+  deck-agent from the DB, not from `web`, **and** the username listed in
+  `/etc/slurm-deck-web/admins` (root 0644, one name per line, `SD_ADMINS_FILE`).
+  A row that says admin without that listing is treated as a normal user, so an
+  edited or forged DB row can't reach admin verbs or `sd-ops`. The installer
+  lists the first admin; root adds each later admin by hand.
 - **View as user (§5.7):** an admin's session may name a target user; deck-agent
   then acts as that target's UID, but only after confirming the session is an
   admin's, and audits every call as "admin X acting as Y".
