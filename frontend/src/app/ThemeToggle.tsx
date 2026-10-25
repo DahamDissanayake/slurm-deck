@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { iconButton, MoonIcon, SunIcon } from "../components/icons";
 
 const KEY = "sd-theme";
 type Theme = "light" | "dark";
@@ -37,17 +38,20 @@ function current(): Theme {
 export function ThemeToggle() {
   const [theme, setTheme] = useState<Theme>(current);
   const next: Theme = theme === "dark" ? "light" : "dark";
+  const label = next === "light" ? "Light theme" : "Dark theme";
   return (
     <button
       type="button"
-      className="rounded-sm border border-border px-2 py-1 text-sm text-text-dim hover:text-text"
+      className={iconButton}
+      title={label}
+      aria-label={label}
       onClick={() => {
         document.documentElement.dataset.theme = next;
         remember(next);
         setTheme(next);
       }}
     >
-      {next === "light" ? "Light theme" : "Dark theme"}
+      {next === "light" ? <SunIcon /> : <MoonIcon />}
     </button>
   );
 }
