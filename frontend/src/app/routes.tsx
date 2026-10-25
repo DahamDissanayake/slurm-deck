@@ -11,8 +11,10 @@ import { Jobs } from "../pages/Jobs";
 import { NewJob } from "../pages/NewJob";
 import { Notify } from "../pages/Notify";
 import { Placeholder } from "../pages/Placeholder";
+import { Services } from "../pages/Services";
 import { SetPassword } from "../pages/SetPassword";
 import { SignIn } from "../pages/SignIn";
+import { Terminal } from "../pages/Terminal";
 import { AppShell } from "./AppShell";
 import { match, useLocation } from "./navigation";
 
@@ -27,7 +29,7 @@ const PUBLIC: [string, () => ReactNode][] = [
 // Every signed-in page; later phases replace the placeholders.
 const PAGES: [string, string][] = [
   ["/models", "Models"],
-  ["/services", "Services"], ["/usage", "Usage"], ["/account/password", "Change password"],
+  ["/usage", "Usage"], ["/account/password", "Change password"],
 ];
 
 export function App() {
@@ -40,6 +42,9 @@ export function App() {
   }
   if (pathname === "/new") return <AppShell><NewJob /></AppShell>;
   if (pathname === "/notify") return <AppShell><Notify /></AppShell>;
+  if (pathname === "/services") return <AppShell><Services /></AppShell>;
+  const terminal = match("/sessions/terminal/:jobId", pathname);
+  if (terminal) return <Terminal jobId={terminal.jobId} />;
   if (pathname === "/envs") return <AppShell><Environments /></AppShell>;
   if (match("/files", pathname) || match("/files/*", pathname)) {
     return <AppShell><Files /></AppShell>;

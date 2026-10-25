@@ -115,3 +115,19 @@ def test_warned_jobs_get_a_banner(live):
         {"job_id": "10", "state": "RUNNING", "time_left_s": 25 * 60}]
     with _ws(c) as ws:
         assert _until(ws, "banner") == {"type": "banner", "job_id": "10", "minutes_left": 25}
+
+
+def test_jobs_carry_their_kind(live):
+    from sdweb.models import Account, Job
+
+    _account(live, "amasha")
+    c = _client(live, "amasha")
+    with live.state.sessionmaker() as s, s.begin():
+        me = s.query(Account).filter_by(username="amasha").one()
+        s.add(Job(job_id="10", account_id=me.id, kind="notebook", name="j", folder="/f",
+                  spec={}, script=""))
+    live.state.agent.jobs_by_session[c.cookies["sd_session"]] = [
+        {"job_id": "10", "state": "RUNNING"}, {"job_id": "11", "state": "RUNNING"}]
+    with _ws(c) as ws:
+        jobs = _until(ws, "jobs")["jobs"]
+    assert [(j["job_id"], j["kind"]) for j in jobs] == [("10", "notebook"), ("11", "batch")]

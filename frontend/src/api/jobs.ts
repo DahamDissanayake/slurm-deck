@@ -26,6 +26,7 @@ export type JobInfo = {
   folder: string | null;
   script: string | null;
   explanation: string | null;
+  session: { kind: string; ready: boolean; open_url: string | null } | null;
 };
 
 const LIVE = new Set(["PENDING", "CONFIGURING", "RUNNING", "SUSPENDED", "COMPLETING",

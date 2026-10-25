@@ -68,8 +68,12 @@ class Poller:
             log.warning("live job fetch failed: %s", e.message)
             return []
         with self.factory() as db:
-            warned = set(db.scalars(select(Job.job_id).where(Job.account_id == account_id,
-                                                             Job.warned_at.is_not(None))))
+            rows = db.execute(select(Job.job_id, Job.kind, Job.warned_at).where(
+                Job.account_id == account_id)).all()
+        warned = {r.job_id for r in rows if r.warned_at is not None}
+        kinds = {r.job_id: r.kind for r in rows}
+        # A copy: the cached list is shared between this account's sockets.
+        jobs = [{**j, "kind": kinds.get(j.get("job_id"), "batch")} for j in jobs]
         out: list[dict[str, Any]] = [{"type": "jobs", "jobs": jobs}]
         for j in jobs:
             if j.get("job_id") in warned and j.get("state") == "RUNNING":
