@@ -26,16 +26,12 @@ templates.register(
                templates.Button("See disk use by user", c["link"])])
 
 
-def _gb(n: int) -> str:
-    return f"{n / 1024 ** 3:.0f} GB"
-
-
 def run_once(db: Session, agent: Any, now: datetime, settings: WebSettings) -> int:
-    """Alert the active admins if the disk is over the threshold and no alert went
-    out in the last 24 hours; returns how many emails were queued."""
+    """Mail the active admins if the disk is over the threshold and no alert went
+    out in the last 24 hours; returns how many were queued."""
     disk = agent.call("cluster.disk_free", {}, session=None)
     total, used = int(disk["total_bytes"]), int(disk["used_bytes"])
-    percent = used * 100 // total if total else 0
+    percent, gb = used * 100 // max(total, 1), 1024 ** 3
     if percent < int(setting(db, "disk_alert_percent", 90)):
         return 0
     last = setting(db, "last_disk_alert_at", None)
@@ -46,9 +42,7 @@ def run_once(db: Session, agent: Any, now: datetime, settings: WebSettings) -> i
     for admin in admins:
         enqueue(db, to=admin.email, kind="disk_alert", settings=settings, now=now,
                 context={"cluster": settings.cluster_name, "percent": str(percent),
-                         "free": _gb(total - used), "total": _gb(total),
+                         "free": f"{(total - used) / gb:.0f} GB", "total": f"{total / gb:.0f} GB",
                          "link": f"https://{settings.public_hostname}/admin/usage"})
-    row = db.get(Setting, "last_disk_alert_at") or Setting(key="last_disk_alert_at")
-    row.value, row.updated_at = now.isoformat(), now
-    db.add(row)
+    db.merge(Setting(key="last_disk_alert_at", value=now.isoformat(), updated_at=now))
     return len(admins)

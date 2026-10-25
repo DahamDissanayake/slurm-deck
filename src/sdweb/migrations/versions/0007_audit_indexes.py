@@ -12,13 +12,15 @@ branch_labels = None
 depends_on = None
 
 
+INDEXES = {"ix_audit_events_ts": ["ts"], "ix_audit_events_actor_ts": ["actor_id", "ts"],
+           "ix_audit_events_action_ts": ["action", "ts"]}
+
+
 def upgrade() -> None:
-    op.create_index("ix_audit_events_ts", "audit_events", ["ts"])
-    op.create_index("ix_audit_events_actor_ts", "audit_events", ["actor_id", "ts"])
-    op.create_index("ix_audit_events_action_ts", "audit_events", ["action", "ts"])
+    for name, columns in INDEXES.items():
+        op.create_index(name, "audit_events", columns)
 
 
 def downgrade() -> None:
-    op.drop_index("ix_audit_events_action_ts", "audit_events")
-    op.drop_index("ix_audit_events_actor_ts", "audit_events")
-    op.drop_index("ix_audit_events_ts", "audit_events")
+    for name in INDEXES:
+        op.drop_index(name, "audit_events")

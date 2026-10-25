@@ -272,17 +272,15 @@ def audit_tail(ctx: RequestContext, payload: dict[str, Any]) -> dict[str, Any]:
             lines = f.read().decode(errors="replace").splitlines()
     except OSError:
         lines = []
-    events = []
+    events: list[Any] = []
     for line in reversed(lines):
         try:
             event = json.loads(line)
         except ValueError:
             continue   # the first line of a tail read may be cut in half
-        if since and str(event.get("ts", "")) <= since:
+        if (since and str(event.get("ts", "")) <= since) or len(events) >= limit:
             break
         events.append(event)
-        if len(events) >= limit:
-            break
     return {"events": events}
 
 
