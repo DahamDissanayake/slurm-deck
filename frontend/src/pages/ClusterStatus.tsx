@@ -17,7 +17,7 @@ function Check({ label, ok }: { label: string; ok: boolean }) {
   );
 }
 
-function Item({ label, value }: { label: string; value: string }) {
+export function Item({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-sm border border-border bg-surface-2 p-3">
       <dt className="text-sm text-text-dim">{label}</dt>

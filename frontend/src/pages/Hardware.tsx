@@ -2,6 +2,7 @@ import { usePolled } from "../api/poll";
 import { usage } from "../api/usage";
 import { Panel } from "../components/Panel";
 import { UsageTabs } from "../components/UsageTabs";
+import { Item } from "./ClusterStatus";
 
 const POLL_MS = 5000;
 const gb = (mb: number) => `${(mb / 1024).toFixed(1)} GB`;
@@ -26,12 +27,7 @@ export function Hardware() {
       {data && !n && <p className="text-text-dim">The GPU node isn't reporting.</p>}
       {n && (
         <dl className="grid gap-3 sm:grid-cols-2">
-          {rows.map(([label, value]) => (
-            <div key={label} className="rounded-sm border border-border bg-surface-2 p-3">
-              <dt className="text-sm text-text-dim">{label}</dt>
-              <dd className="text-lg">{value}</dd>
-            </div>
-          ))}
+          {rows.map(([label, value]) => <Item key={label} label={label} value={value} />)}
         </dl>
       )}
     </Panel>

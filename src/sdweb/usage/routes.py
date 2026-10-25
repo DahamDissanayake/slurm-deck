@@ -1,5 +1,4 @@
-"""/api/usage and the admin usage reports. deck-agent does the sacct and du
-work as the right account; this only passes the caller's session through."""
+"""/api/usage and the admin reports: deck-agent does the work, as the right account."""
 
 from __future__ import annotations
 
