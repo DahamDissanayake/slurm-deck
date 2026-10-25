@@ -193,10 +193,21 @@ def _ws_handler(kind: str) -> Callable[..., Any]:
         try:
             await _pump(ws, upstream)
         finally:
-            await upstream.close()
+            await _close_upstream(upstream)
             with contextlib.suppress(RuntimeError):
                 await ws.close()
     return socket
+
+
+async def _close_upstream(upstream: Any) -> None:
+    """Close the job's socket. When this task is being cancelled (the browser
+    went away mid-handshake, or the server is stopping) the close itself is
+    cancelled, so the connection is dropped outright rather than leaked."""
+    try:
+        await upstream.close()
+    except asyncio.CancelledError:
+        upstream.transport.abort()
+        raise
 
 
 async def _pump(ws: WebSocket, upstream: Any) -> None:
