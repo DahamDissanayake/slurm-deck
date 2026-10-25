@@ -4,12 +4,11 @@ import { Panel } from "../components/Panel";
 import { UsageTabs } from "../components/UsageTabs";
 import { Item } from "./ClusterStatus";
 
-const POLL_MS = 5000;
 const gb = (mb: number) => `${(mb / 1024).toFixed(1)} GB`;
 
 /** The GPU node's live numbers: GPU, memory, temperature, power, CPU and RAM. */
 export function Hardware() {
-  const { data, failed } = usePolled(usage.status, POLL_MS);
+  const { data, failed } = usePolled(usage.status, 5000);
   const n = data?.node;
   const rows: [string, string][] = n ? [
     ["GPU utilisation", `${n.gpu_util}%`],
