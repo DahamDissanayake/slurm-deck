@@ -69,6 +69,9 @@ TERMINAL_WS = re.compile(r"terminals/websocket/[A-Za-z0-9_-]{1,64}")
 JSON_ONLY = {"content-type": "application/json", "x-content-type-options": "nosniff",
              "content-security-policy": "sandbox; default-src 'none'",
              "cache-control": "no-store"}
+# How often an open socket re-checks the session behind it, so sign-out, an
+# account disable or expiry closes it within a minute.
+RECHECK_S = 30.0
 
 
 _CLIENTS: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, httpx.AsyncClient] = (
@@ -318,9 +321,12 @@ def _ws_ctx(app: Any, raw: str) -> SessionCtx | None:
 def _ws_handler(kind: str) -> Callable[..., Any]:
     async def socket(ws: WebSocket, job_id: str, path: str) -> None:
         app = ws.app
+        # Browsers always send Origin on an upgrade; a page on any other origin
+        # is refused rather than trusting SameSite alone.
         origin = ws.headers.get("origin")
         if on_session_origin(ws):
-            ctx = await run_in_threadpool(_ticket_ctx, ws, kind, job_id, refresh=False)
+            ctx = await run_in_threadpool(_ticket_ctx, ws, kind, job_id, refresh=False) \
+                if origin in (None, _session_origin(app)) else None
         elif kind == "terminal" and TERMINAL_WS.fullmatch(path) and \
                 origin in (None, _app_origin(app)):
             ctx = await run_in_threadpool(_ws_ctx, app, ws.cookies.get(COOKIE, ""))
@@ -345,12 +351,20 @@ def _ws_handler(kind: str) -> Callable[..., Any]:
             await ws.close(code=1011)
             return
         await ws.accept(subprotocol=upstream.subprotocol)
+        raw = ctx.raw_token
+
+        async def alive() -> bool:
+            return await run_in_threadpool(_ws_ctx, app, raw) is not None
+
+        interval = float(getattr(app.state, "proxy_recheck_s", RECHECK_S))
+        code = 1000
         try:
-            await _pump(ws, upstream)
+            if not await _pump(ws, upstream, alive, interval):
+                code = 1008   # the session ended: sign-out, disable or expiry
         finally:
             await _close_upstream(upstream)
             with contextlib.suppress(RuntimeError):
-                await ws.close()
+                await ws.close(code=code)
     return socket
 
 
@@ -365,8 +379,11 @@ async def _close_upstream(upstream: Any) -> None:
         raise
 
 
-async def _pump(ws: WebSocket, upstream: Any) -> None:
-    """Copy messages both ways until either side closes, then stop the other."""
+async def _pump(ws: WebSocket, upstream: Any, alive: Callable[[], Any],
+                interval: float) -> bool:
+    """Copy messages both ways until either side closes, then stop the other.
+    Every interval seconds alive() is asked whether the session still holds;
+    False from it ends the pump. Returns False when that is why it stopped."""
     async def to_job() -> None:
         while True:
             msg = await ws.receive()
@@ -383,13 +400,21 @@ async def _pump(ws: WebSocket, upstream: Any) -> None:
             else:
                 await ws.send_bytes(data)
 
-    tasks = [asyncio.create_task(to_job()), asyncio.create_task(to_browser())]
+    async def watch() -> None:
+        while True:
+            await asyncio.sleep(interval)
+            if not await alive():
+                return
+
+    watcher = asyncio.create_task(watch())
+    tasks = [asyncio.create_task(to_job()), asyncio.create_task(to_browser()), watcher]
     try:
-        await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
     finally:
         for t in tasks:
             t.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
+    return not (watcher in done and watcher.exception() is None)
 
 
 for _kind in KINDS:

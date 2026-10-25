@@ -400,3 +400,101 @@ def test_notebook_websocket_on_the_app_origin_is_refused(proxy):
                                            headers={"cookie": f"sd_session={raw}"}):
             pass
     assert e.value.code == 1008 and up.opened == 0
+
+
+# --- Origin checks and closing on sign-out (SLURM-49 finding 8) ----------------------------
+
+def test_session_origin_websocket_from_another_origin_is_refused(proxy):
+    _, _, c, up = proxy
+    c["amasha"].get("/notebook/42/api/status")
+    ticket = _ticket(c["amasha"])
+    for origin in ("https://evil.example", APP, "http://sessions.deck.x.org"):
+        with pytest.raises(Disconnect) as e:
+            with c["amasha"].websocket_connect(
+                    f"{S.replace('https', 'wss')}/notebook/42/ws",
+                    headers={"cookie": f"{PROXY_COOKIE}={ticket}", "origin": origin}):
+                pass
+        assert e.value.code == 1008
+    assert up.opened == 0
+    with c["amasha"].websocket_connect(f"{S.replace('https', 'wss')}/notebook/42/ws",
+                                       headers={"cookie": f"{PROXY_COOKIE}={ticket}",
+                                                "origin": S}) as ws:
+        ws.send_text("ok")
+        assert ws.receive_text() == "ok"
+
+
+def test_terminal_websocket_from_another_origin_is_refused(proxy):
+    _, agent, c, up = proxy
+    agent.kind = "terminal"
+    raw = c["amasha"].cookies["sd_session"]
+    for origin in ("https://evil.example", S):
+        with pytest.raises(Disconnect) as e:
+            with c["amasha"].websocket_connect(
+                    "/terminal/42/terminals/websocket/1",
+                    headers={"cookie": f"sd_session={raw}", "origin": origin}):
+                pass
+        assert e.value.code == 1008
+    assert up.opened == 0
+    with c["amasha"].websocket_connect("/terminal/42/terminals/websocket/1",
+                                       headers={"cookie": f"sd_session={raw}",
+                                                "origin": APP}) as ws:
+        ws.send_text("ok")
+        assert ws.receive_text() == "ok"
+
+
+def _wait_closed(ws, up) -> int:
+    """Keep the socket busy until the proxy closes it; the close code."""
+    with pytest.raises(Disconnect) as e:
+        for i in range(200):
+            ws.send_text(str(i))
+            ws.receive_text()
+            time.sleep(0.05)
+    deadline = time.time() + 5
+    while up.open_sockets and time.time() < deadline:
+        time.sleep(0.05)
+    assert up.open_sockets == 0
+    return e.value.code
+
+
+def test_session_socket_closes_after_sign_out(proxy):
+    app, _, c, up = proxy
+    app.state.proxy_recheck_s = 0.1
+    c["amasha"].get("/notebook/42/api/status")
+    with _ws(c["amasha"], _ticket(c["amasha"])) as ws:
+        ws.send_text("hello")
+        assert ws.receive_text() == "hello"
+        assert c["amasha"].post("/api/auth/logout").status_code == 200
+        assert _wait_closed(ws, up) == 1008
+
+
+def test_terminal_socket_closes_when_the_account_is_disabled(proxy):
+    from sdweb.models import Account
+
+    app, agent, c, up = proxy
+    app.state.proxy_recheck_s = 0.1
+    agent.kind = "terminal"
+    raw = c["amasha"].cookies["sd_session"]
+    with c["amasha"].websocket_connect("/terminal/42/terminals/websocket/1",
+                                       headers={"cookie": f"sd_session={raw}"}) as ws:
+        ws.send_text("hello")
+        assert ws.receive_text() == "hello"
+        with app.state.sessionmaker() as s, s.begin():
+            s.query(Account).filter_by(username="amasha").one().status = "disabled"
+        assert _wait_closed(ws, up) == 1008
+
+
+def test_live_session_socket_stays_open(proxy):
+    app, _, c, _ = proxy
+    app.state.proxy_recheck_s = 0.05
+    c["amasha"].get("/notebook/42/api/status")
+    with _ws(c["amasha"], _ticket(c["amasha"])) as ws:
+        for i in range(10):
+            ws.send_text(str(i))
+            assert ws.receive_text() == str(i)
+            time.sleep(0.05)
+
+
+def test_recheck_default_is_within_a_minute():
+    from sdweb.proxy import routes
+
+    assert 0 < routes.RECHECK_S <= 60
