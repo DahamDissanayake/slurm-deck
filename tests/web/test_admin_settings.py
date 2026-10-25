@@ -37,12 +37,13 @@ def adm(env):
     return app, _client(app, "amasha"), _client(app, "dinuka")
 
 
-def test_the_extension_cap_cannot_pass_the_partition_maximum(adm):
-    _, _, admin = adm
+def test_the_cap_cannot_pass_the_partition_maximum_and_only_admins_get_in(adm):
+    _, user, admin = adm
     r = admin.put(URL, json={"extension_cap_hours": 25})
     assert r.status_code == 422 and r.json()["error"] == "bad_setting"
     assert admin.get(URL).json()["settings"]["extension_cap_hours"] == 24
     assert admin.put(URL, json={"extension_cap_hours": 12}).status_code == 200
+    assert user.get(URL).status_code == 403 and user.put(URL, json={}).status_code == 403
 
 
 def test_changes_are_audited_with_old_and_new_and_one_bad_value_saves_nothing(adm):
@@ -61,12 +62,6 @@ def test_changes_are_audited_with_old_and_new_and_one_bad_value_saves_nothing(ad
     for body in ({"default_time_limit": "48:00:00"}, {"disk_alert_percent": 100},
                  {"mail_enabled": "yes"}, {"maintenance_banner": "x" * 501}, {"nonsense": 1}):
         assert admin.put(URL, json=body).status_code == 422, body
-
-
-def test_only_admins_can_change_settings(adm):
-    _, user, _ = adm
-    assert user.get(URL).status_code == 403
-    assert user.put(URL, json={"mail_enabled": False}).status_code == 403
 
 
 def test_the_maintenance_banner_reaches_the_live_cluster_message(live):  # noqa: F811

@@ -22,11 +22,11 @@ Admin = Annotated[SessionCtx, Depends(require_admin)]
 MAX_PAGE = 200
 
 
-def _when(text: str | None, what: str) -> datetime | None:
+def _when(text: str | None) -> datetime | None:
     try:
         return datetime.fromisoformat(text) if text else None
     except ValueError:
-        raise ApiError(422, "bad_date", message=f"{what} must be a date and time.") from None
+        raise ApiError(422, "bad_date", message="Use a date like 2026-10-25.") from None
 
 
 @router.get("/audit")
@@ -43,9 +43,9 @@ def audit(ctx: Admin, db: Db, actor: str = "", action: str = "",
             Account.username == actor).scalar_subquery())
     if action:
         q = q.where(AuditEvent.action.startswith(action, autoescape=True))
-    if start := _when(from_, "From"):
+    if start := _when(from_):
         q = q.where(AuditEvent.ts >= start)
-    if end := _when(to, "To"):
+    if end := _when(to):
         q = q.where(AuditEvent.ts <= end)
     rows = db.execute(q.order_by(AuditEvent.ts.desc(), AuditEvent.id.desc())
                       .limit(size + 1).offset((page - 1) * size)).all()
