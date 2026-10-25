@@ -14,9 +14,20 @@ case "$1 $2" in
 "show job")
   [ -f "$FAKE_DIR/job.$3" ] || { echo "Invalid job id specified" >&2; exit 1; }
   . "$FAKE_DIR/job.$3"
-  echo "JobId=$3 JobName=train UserId=$OWNER(2001) JobState=$STATE Partition=gpu" \
-       "TimeLimit=$LIMIT RunTime=01:00:00 WorkDir=$OUT StdOut=$OUT/slurm-$3.out" \
-       "StdErr=$OUT/slurm-$3.err NodeList=gpu1 ExitCode=0:0";;
+  [ "$4" = "--json" ] || { echo "only --json is faked" >&2; exit 1; }
+  mins=$(echo "$LIMIT" | awk -F'[-:]' '{ print (NF == 4) ? $1*1440 + $2*60 + $3 : $1*60 + $2 }')
+  n() { printf '{"set":true,"infinite":false,"number":%s}' "$1"; }
+  printf '{"jobs":[{"job_id":%s,"name":"train","user_name":"%s","user_id":2001,' "$3" "$OWNER"
+  printf '"job_state":["%s"],"partition":"gpu","time_limit":%s,"start_time":%s,' \
+         "$STATE" "$(n "$mins")" "$(n $(( $(date +%s) - 3600 )))"
+  printf '"end_time":%s,"suspend_time":%s,"pre_sus_time":%s,' "$(n 0)" "$(n 0)" "$(n 0)"
+  printf '"current_working_directory":"%s","standard_output":"%s/slurm-%%j.out",' \
+         "${WORKDIR:-$OUT}" "$OUT"
+  printf '"stdout_expanded":"%s/slurm-%s.out","standard_error":"%s/slurm-%%j.err",' \
+         "$OUT" "$3" "$OUT"
+  printf '"stderr_expanded":"%s/slurm-%s.err","nodes":"gpu1",' "$OUT" "$3"
+  printf '"exit_code":{"status":["SUCCESS"],"return_code":%s,' "$(n 0)"
+  printf '"signal":{"id":{"set":false,"infinite":false,"number":0},"name":""}}}]}\n';;
 "show partition") echo "PartitionName=gpu MaxTime=1-04:00:00 State=UP";;
 update*)
   id=${2#JobId=}; limit=${3#TimeLimit=}
@@ -64,12 +75,13 @@ def jobs(agent, monkeypatch):
     return agent
 
 
-def job(agent, job_id, owner="amasha", state="RUNNING", limit="22:00:00"):
+def job(agent, job_id, owner="amasha", state="RUNNING", limit="22:00:00", workdir=None):
     out = agent.dir / "shared/jobs" / owner / "train_1"
     out.mkdir(parents=True, exist_ok=True)
     (out / f"slurm-{job_id}.out").write_text("epoch 1\nepoch 2\n")
+    extra = f"WORKDIR='{workdir}'\n" if workdir else ""
     (agent.dir / f"job.{job_id}").write_text(
-        f"OWNER={owner}\nSTATE={state}\nLIMIT={limit}\nOUT={out}\n")
+        f"OWNER={owner}\nSTATE={state}\nLIMIT={limit}\nOUT={out}\n{extra}")
 
 
 def _err(agent, verb, payload, as_="user:amasha") -> AgentCallError:
@@ -163,6 +175,57 @@ def test_show_and_list(jobs):
     assert _err(jobs, "job.show", {"job_id": "47"}, as_="user:hassan").status == 404
     assert jobs.call("job.list")["jobs"][0]["name"] == "train-a"
     assert "squeue --noheader" in jobs.calls() and "-u amasha" in jobs.calls()
+
+
+def test_show_reads_structured_json(jobs):
+    job(jobs, "50")
+    s = jobs.call("job.show", {"job_id": "50"})
+    assert "scontrol show job 50 --json" in jobs.calls()
+    assert s["std_out"].endswith("/train_1/slurm-50.out")      # the expanded path, not %j
+    assert s["std_err"].endswith("/train_1/slurm-50.err")
+    assert 3590 <= s["run_time_s"] <= 3700 and s["exit_code"] == "0:0"
+
+
+def test_injected_workdir_keeps_the_real_owner(jobs):
+    """A WorkDir that looks like more scontrol fields can't change the owner or state."""
+    fake = "/tmp/x UserId=hassan(2002) JobState=COMPLETED NodeList=evil StdOut=/etc/shadow"
+    job(jobs, "51", owner="amasha", workdir=fake)
+    s = jobs.call("job.show", {"job_id": "51"})
+    assert (s["owner"], s["state"], s["node"], s["work_dir"]) == ("amasha", "RUNNING", "gpu1",
+                                                                 fake)
+    assert s["std_out"].endswith("/train_1/slurm-51.out")
+    assert _err(jobs, "job.show", {"job_id": "51"}, as_="user:hassan").status == 404
+    assert _err(jobs, "job.cancel", {"job_id": "51"}, as_="user:hassan").status == 404
+
+
+def test_job_fields_from_older_and_newer_json_shapes():
+    from deckagent.verbs.jobs import _job_fields
+
+    old = {"job_id": 7, "user_name": "amasha", "job_state": "SUSPENDED", "partition": "gpu",
+           "time_limit": 90, "start_time": 1000, "end_time": 0, "suspend_time": 2000,
+           "pre_sus_time": 600, "current_working_directory": "/w",
+           "standard_output": "/w/slurm-%j.out", "standard_error": "/w/%x-%A_%a.err",
+           "name": "train", "array_job_id": 7, "array_task_id": 3, "nodes": "gpu1",
+           "exit_code": 256}
+    f = _job_fields(old, now=5000)
+    assert (f["owner"], f["state"], f["time_limit_s"], f["run_time_s"]) == (
+        "amasha", "SUSPENDED", 5400, 600)
+    assert f["std_out"] == "/w/slurm-7.out" and f["std_err"] == "/w/train-7_3.err"
+    assert f["exit_code"] == "1:0"
+    new = {"user_name": "amasha", "job_state": ["RUNNING", "COMPLETING"],
+           "time_limit": {"set": True, "infinite": True, "number": 0},
+           "start_time": {"set": True, "infinite": False, "number": 1000},
+           "suspend_time": {"set": True, "infinite": False, "number": 0},
+           "exit_code": {"status": ["SIGNALED"], "return_code": {"set": True, "number": 0},
+                         "signal": {"id": {"set": True, "number": 9}, "name": "KILL"}}}
+    f = _job_fields(new, now=4600)
+    assert (f["state"], f["time_limit_s"], f["run_time_s"], f["exit_code"]) == (
+        "RUNNING", None, 3600, "0:9")
+
+
+def test_text_output_is_not_trusted(jobs):
+    (jobs.dir / "bin" / "scontrol").write_text('#!/bin/sh\necho "JobId=52 UserId=amasha(1)"\n')
+    assert _err(jobs, "job.show", {"job_id": "52"}).status == 404
 
 
 def test_other_users_log_is_404(jobs):

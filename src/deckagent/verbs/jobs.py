@@ -5,9 +5,11 @@ time."""
 
 from __future__ import annotations
 
+import json
 import re
 import sys
 import threading
+import time
 from typing import Any
 
 from deckagent.audit import audit
@@ -133,24 +135,94 @@ def list_jobs(ctx: RequestContext, payload: dict[str, Any]) -> dict[str, Any]:
     return {"jobs": [vars(q) for q in parse_squeue(out)]}
 
 
-_KEY = re.compile(r"(?:^|\s)([A-Za-z][A-Za-z0-9:/_]*)=")
+def _num(value: Any) -> int | None:
+    """A Slurm JSON number: a plain int (older data parsers) or
+    {"set", "infinite", "number"}. None when unset or infinite."""
+    if isinstance(value, dict):
+        if not value.get("set", True) or value.get("infinite"):
+            return None
+        value = value.get("number")
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
-def _show(ctx: RequestContext, job_id: str, *, gone_code: str = "not_found") -> dict[str, str]:
-    """scontrol show job --oneliner as a dict; values may contain spaces (paths)."""
+def _text(value: Any) -> str:
+    return value if isinstance(value, str) else ""
+
+
+_PATTERN = re.compile(r"%(%|[jAaux])")
+
+
+def _expand(path: str, job: dict[str, Any]) -> str:
+    """The stdio patterns our scripts use, for Slurm versions without the
+    *_expanded fields."""
+    def num(key: str) -> str:
+        n = _num(job.get(key))
+        return "" if n is None else str(n)
+
+    values = {"%": "%", "j": num("job_id"),
+              "A": num("array_job_id") if _num(job.get("array_job_id")) else num("job_id"),
+              "a": num("array_task_id"),
+              "u": _text(job.get("user_name")), "x": _text(job.get("name"))}
+    return _PATTERN.sub(lambda m: values[m.group(1)], path)
+
+
+def _run_time(job: dict[str, Any], state: str, now: int) -> int | None:
+    """RunTime the way scontrol prints it, from start, end and suspend times."""
+    start, pre_sus = _num(job.get("start_time")), _num(job.get("pre_sus_time")) or 0
+    if state == "PENDING" or not start:
+        return 0 if state == "PENDING" else None
+    if state == "SUSPENDED":
+        return pre_sus
+    end = _num(job.get("end_time"))
+    end = now if state in LIVE_STATES or not end else end
+    suspended = _num(job.get("suspend_time"))
+    return max(0, pre_sus + end - suspended if suspended else end - start)
+
+
+def _exit_code(value: Any) -> str:
+    """"return code:signal", as scontrol prints ExitCode."""
+    if isinstance(value, int):   # older data parsers: the raw wait status
+        return f"{value >> 8 & 0xFF}:{value & 0x7F}"
+    if not isinstance(value, dict):
+        return ""
+    signal = value.get("signal")
+    sig = _num(signal.get("id")) if isinstance(signal, dict) else None
+    return f"{_num(value.get('return_code')) or 0}:{sig or 0}"
+
+
+def _job_fields(job: dict[str, Any], *, now: int) -> dict[str, Any]:
+    """The fields deck-agent uses, from one job of `scontrol show job --json`.
+    Each value comes from its own JSON field, so text inside one (a path, a
+    job name) can never stand in for another."""
+    raw_state = job.get("job_state")
+    state = _text(raw_state[0] if isinstance(raw_state, list) and raw_state else raw_state)
+    limit = _num(job.get("time_limit"))   # minutes
+    return {"owner": _text(job.get("user_name")), "state": state,
+            "partition": _text(job.get("partition")),
+            "time_limit_s": limit * 60 if limit is not None else None,
+            "run_time_s": _run_time(job, state, now),
+            "std_out": _text(job.get("stdout_expanded"))
+            or _expand(_text(job.get("standard_output")), job),
+            "std_err": _text(job.get("stderr_expanded"))
+            or _expand(_text(job.get("standard_error")), job),
+            "work_dir": _text(job.get("current_working_directory")),
+            "node": _text(job.get("nodes")), "exit_code": _exit_code(job.get("exit_code"))}
+
+
+def _show(ctx: RequestContext, job_id: str, *, gone_code: str = "not_found") -> dict[str, Any]:
+    """The job's fields from `scontrol show job --json`, never the --oneliner
+    text, where a value with spaces could pose as another key."""
     try:
-        text = run_slurm(ctx.config, ["scontrol", "show", "job", job_id, "--oneliner"])
-    except AgentError:
+        doc = json.loads(run_slurm(ctx.config, ["scontrol", "show", "job", job_id, "--json"]))
+        found = doc["jobs"]
+        if not isinstance(found, list) or not found or not isinstance(found[0], dict):
+            raise ValueError("no job")
+    except (AgentError, ValueError, KeyError, TypeError):
         if gone_code == "job_ended":
             raise AgentError("job_ended", "This job has already ended.", 409) from None
         raise AgentError("not_found", "There is no such job.", 404) from None
-    marks = list(_KEY.finditer(text.strip()))
-    fields = {m.group(1): text.strip()[m.end():(marks[i + 1].start() if i + 1 < len(marks)
-                                                   else None)].strip()
-              for i, m in enumerate(marks)}
-    caller = ctx.caller
-    fields["_owner"] = fields.get("UserId", "").split("(")[0]
-    if caller.role != "admin" and fields["_owner"] != caller.username:
+    fields = _job_fields(found[0], now=int(time.time()))
+    if ctx.caller.role != "admin" and fields["owner"] != ctx.caller.username:
         raise AgentError("not_found", "There is no such job.", 404)
     return fields
 
@@ -158,16 +230,12 @@ def _show(ctx: RequestContext, job_id: str, *, gone_code: str = "not_found") -> 
 @verb("job.show", allow=PEOPLE)
 def show(ctx: RequestContext, payload: dict[str, Any]) -> dict[str, Any]:
     f = _show(ctx, _job_id(payload))
-    return {"owner": f["_owner"], "state": f.get("JobState", ""),
-            "time_limit_s": parse_slurm_duration(f.get("TimeLimit", "")),
-            "run_time_s": parse_slurm_duration(f.get("RunTime", "")),
-            "std_out": f.get("StdOut", ""), "std_err": f.get("StdErr", ""),
-            "work_dir": f.get("WorkDir", ""), "node": f.get("NodeList", ""),
-            "exit_code": f.get("ExitCode", "")}
+    return {k: f[k] for k in ("owner", "state", "time_limit_s", "run_time_s", "std_out",
+                              "std_err", "work_dir", "node", "exit_code")}
 
 
-def _live(f: dict[str, str]) -> None:
-    if f.get("JobState", "") not in LIVE_STATES:
+def _live(f: dict[str, Any]) -> None:
+    if f["state"] not in LIVE_STATES:
         raise AgentError("job_ended", "This job has already ended.", 409)
 
 
@@ -176,7 +244,7 @@ def cancel(ctx: RequestContext, payload: dict[str, Any]) -> dict[str, Any]:
     job_id = _job_id(payload)
     f = _show(ctx, job_id, gone_code="job_ended")
     _live(f)
-    own = f["_owner"] == ctx.caller.username
+    own = f["owner"] == ctx.caller.username
     run_slurm(ctx.config, ["scancel", job_id],
               as_ident=_identity(ctx.caller, ctx.config) if own else None)
     return {}
@@ -206,10 +274,10 @@ def extend(ctx: RequestContext, payload: dict[str, Any]) -> dict[str, Any]:
     with _job_lock(job_id):   # re-read under the lock, so two clicks can't both pass
         f = _show(ctx, job_id, gone_code="job_ended")
         _live(f)
-        current = parse_slurm_duration(f.get("TimeLimit", ""))
+        current = f["time_limit_s"]
         if current is None:
             raise AgentError("no_limit", "This job has no time limit to extend.", 409)
-        part = run_slurm(ctx.config, ["scontrol", "show", "partition", f.get("Partition", ""),
+        part = run_slurm(ctx.config, ["scontrol", "show", "partition", f["partition"],
                                       "--oneliner"])
         max_time = next((t[8:] for t in part.split() if t.startswith("MaxTime=")), "")
         limits = [s for s in (parse_slurm_duration(max_time),) if s is not None]
@@ -244,8 +312,8 @@ def history(ctx: RequestContext, payload: dict[str, Any]) -> dict[str, Any]:
 @verb("joblog.read", allow=PEOPLE)
 def joblog_read(ctx: RequestContext, payload: dict[str, Any]) -> RawResponse:
     f = _show(ctx, _job_id(payload))
-    path = f.get("StdErr" if payload.get("stream") == "err" else "StdOut", "")
-    owner = f["_owner"]
+    path = f["std_err" if payload.get("stream") == "err" else "std_out"]
+    owner = f["owner"]
     if not path or not in_user_job_jail(path, ctx.config.nfs_root, owner):
         raise AgentError("not_found", "This job's log isn't available.", 404)
     if owner == ctx.caller.username:
@@ -281,8 +349,8 @@ def session_info(ctx: RequestContext, payload: dict[str, Any]) -> dict[str, Any]
     port, so a job can't point the proxy at another host or service."""
     job_id = _job_id(payload)
     f = _show(ctx, job_id)
-    cfg, caller, owner = ctx.config, ctx.caller, f["_owner"]
-    path, folder = f.get("StdOut", ""), f.get("WorkDir", "")
+    cfg, caller, owner = ctx.config, ctx.caller, f["owner"]
+    path, folder = f["std_out"], f["work_dir"]
     if not path or not in_user_job_jail(path, cfg.nfs_root, owner):
         raise AgentError("not_found", "This job has no session output.", 404)
     if owner == caller.username:
@@ -291,14 +359,14 @@ def session_info(ctx: RequestContext, payload: dict[str, Any]) -> dict[str, Any]
         ident, who = _ops_identity(caller, cfg), ["--user", owner, "--admin"]
         audit(cfg, actor=caller.username, acting_admin=caller.acting_admin, verb="session.info",
               target=job_id, detail={"owner": owner}, result="ok")
-    out: dict[str, Any] = {"state": f.get("JobState", ""), "ready": False, "kind": None,
+    out: dict[str, Any] = {"state": f["state"], "ready": False, "kind": None,
                            "node": None, "port": None, "token": None}
     opts = ("--offset", "0", "--limit", str(LOG_MAX))
     text = b"".join(files._stream(ident, files._argv(cfg, "read", who, path, opts=opts)))
     info = parse_session_line(text.decode(errors="replace"))
     if info is None:
         return out
-    if info.node not in _node_names(ctx, f.get("NodeList", "")):
+    if info.node not in _node_names(ctx, f["node"]):
         raise AgentError("session_mismatch",
                          "This job's session doesn't point at the node it runs on.", 409)
     lo, hi = cfg.session_ports
