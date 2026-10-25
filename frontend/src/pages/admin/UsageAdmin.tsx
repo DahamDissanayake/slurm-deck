@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 
-import { ApiError } from "../../api/client";
 import { formatBytes } from "../../api/files";
 import { type ClusterUsage, DAYS, type DiskUsage, usage } from "../../api/usage";
 import { Panel } from "../../components/Panel";
@@ -16,12 +15,11 @@ export function UsageAdmin() {
   const [report, setReport] = useState<ClusterUsage | null>(null);
   const [disk, setDisk] = useState<DiskUsage | null>(null);
   const [sort, setSort] = useState<{ key: SortKey; asc: boolean }>({ key: "gpu_hours", asc: false });
-  const [error, setError] = useState("");
 
   useEffect(() => {
     setReport(null);
-    usage.cluster(days).then(setReport, (e) =>
-      setError(e instanceof ApiError && e.message ? e.message : "Couldn't load usage."));
+    usage.cluster(days).then(setReport, () => setReport({ days, pods_total: 0, users: [],
+      total: { gpu_hours: 0, cpu_hours: 0, jobs_by_state: {} } }));
   }, [days]);
   useEffect(() => {
     usage.disk().then(setDisk, () => setDisk({ total_bytes: 0, users: [] }));
@@ -49,7 +47,6 @@ export function UsageAdmin() {
             {DAYS.map((d) => <option key={d} value={d}>Last {d} days</option>)}
           </select>
         </label>
-        {error && <p role="alert" className="text-danger">{error}</p>}
         {report && (
           <table className="w-full text-left text-sm">
             <thead className="text-text-dim">

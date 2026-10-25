@@ -1,6 +1,5 @@
-"""Usage verbs: GPU-hours, CPU-hours and jobs by state from sacct, and disk
-use per user. Personal usage runs sacct as the caller; the cluster-wide report
-and disk usage are admin-only (disk usage runs du as sd-ops)."""
+"""Usage verbs: GPU-hours, CPU-hours and jobs by state from sacct (personal: as
+the caller; cluster-wide: admins), and per-user disk use (du as sd-ops)."""
 
 from __future__ import annotations
 
@@ -85,8 +84,7 @@ def cluster_usage(ctx: RequestContext, payload: dict[str, Any]) -> dict[str, Any
 
 
 def _du(ctx: RequestContext, ident: PosixIdentity, tree: str) -> dict[str, int]:
-    """Bytes per folder directly under tree. du exits non-zero when it can't
-    read something but still prints what it measured."""
+    """Bytes per folder under tree; du exits non-zero on unreadable files but still prints."""
     r = run_as(ident, ["du", "-b", "--max-depth=1", tree], timeout=DU_TIMEOUT_S)
     sizes: dict[str, int] = {}
     for line in r.stdout.decode(errors="replace").splitlines():
@@ -100,8 +98,7 @@ def _du(ctx: RequestContext, ident: PosixIdentity, tree: str) -> dict[str, int]:
 
 @verb("admin.disk_usage", allow=ADMIN)
 def disk_usage(ctx: RequestContext, payload: dict[str, Any]) -> dict[str, Any]:
-    """Bytes per user over both of their trees (users/<u> and jobs/<u>),
-    measured at most once every 10 minutes."""
+    """Bytes per user over users/<u> and jobs/<u>, measured at most every 10 minutes."""
     _admin_only(ctx)
     root = ctx.config.nfs_root
     with _disk_lock:

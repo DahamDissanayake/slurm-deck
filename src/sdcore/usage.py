@@ -1,10 +1,7 @@
-"""Usage totals from sacct: GPU-hours, CPU-hours and jobs by state.
-
-Hours come from each job's elapsed time and allocation, so they work without
-sreport. One pod is one gres/shard, 1/pods_total of the GPU. Ported from
-legacy/v1.4-tui slurmdeck/accounting.py with the subprocess calls taken out.
-No I/O here: callers run sacct (through deck-agent) and hand the text in.
-"""
+"""Usage totals from sacct: GPU-hours, CPU-hours and jobs by state, from each
+job's elapsed time and allocation (no sreport needed). One pod is one
+gres/shard, 1/pods_total of the GPU. Ported from legacy/v1.4-tui
+slurmdeck/accounting.py; no I/O: callers hand the sacct text in."""
 
 from __future__ import annotations
 

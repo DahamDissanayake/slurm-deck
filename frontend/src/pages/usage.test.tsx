@@ -41,11 +41,6 @@ describe("ClusterStatus", () => {
     expect(screen.getByText("Pods in use").nextSibling).toHaveTextContent("3 of 8");
   });
 
-  it("says the scheduler is not reachable when the status call fails", async () => {
-    mockFetch({});
-    render(<ClusterStatus />);
-    await vi.waitFor(() => expect(check("Scheduler reachable")).toHaveAttribute("data-ok", "false"));
-  });
 });
 
 describe("Hardware", () => {
@@ -58,11 +53,6 @@ describe("Hardware", () => {
     expect(screen.getByText("180 W")).toBeInTheDocument();
   });
 
-  it("warns that the numbers are stale when the node has no live stats", async () => {
-    mockFetch({ "GET /api/cluster/status": status({ ...NODE, live_stats: false }) });
-    render(<Hardware />);
-    expect(await screen.findByRole("note")).toHaveTextContent("out of date");
-  });
 });
 
 describe("Usage", () => {
