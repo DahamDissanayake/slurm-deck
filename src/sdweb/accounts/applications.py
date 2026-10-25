@@ -85,6 +85,12 @@ def is_open(db: Db) -> dict:
     return {"open": apply_open(db)}
 
 
+@router.get("/api/public/site")
+def site(settings: Settings) -> dict:
+    """What the sign-in page needs to help someone whose network can't resolve the name."""
+    return {"hostname": settings.public_hostname, "lan_addr": settings.lan_addr}
+
+
 @router.post("/api/public/applications", status_code=201)
 def apply(body: ApplyIn, request: Request, db: Db, now: Now, mailer: Mail) -> JSONResponse:
     if body.website:

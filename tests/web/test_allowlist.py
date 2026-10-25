@@ -44,3 +44,13 @@ def test_admin_manages_the_list_and_it_opens_the_form(admin):
         assert c.delete(f"/api/admin/allowlist/{e['id']}").status_code == 200
     assert public.get("/api/public/apply-open").json() == {"open": False}
     assert public.post("/api/admin/allowlist", json={"value": "x.org"}).status_code == 401
+
+
+def test_the_public_site_info_gives_the_hostname_and_lan_address(env):
+    from dataclasses import replace
+
+    from fastapi.testclient import TestClient
+    app = env[0]
+    app.state.settings = replace(app.state.settings, lan_addr="10.35.4.100")
+    r = TestClient(app, base_url="https://testserver").get("/api/public/site")
+    assert r.json() == {"hostname": "deck.x.org", "lan_addr": "10.35.4.100"}

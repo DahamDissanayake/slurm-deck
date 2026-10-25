@@ -1,6 +1,6 @@
 import { type FormEvent, useEffect, useState } from "react";
 
-import { applyOpen, signIn } from "../api/auth";
+import { applyOpen, signIn, siteInfo } from "../api/auth";
 import { ApiError } from "../api/client";
 import { Link, navigate } from "../app/navigation";
 import { Alert, button, Field, PublicPage } from "./PublicPage";
@@ -25,9 +25,11 @@ export function SignIn() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
+  const [site, setSite] = useState({ hostname: "", lan_addr: "" });
 
   useEffect(() => {
     applyOpen().then(setOpen).catch(() => setOpen(false));
+    siteInfo().then(setSite).catch(() => undefined);
   }, []);
 
   async function submit(e: FormEvent) {
@@ -61,6 +63,13 @@ export function SignIn() {
       <p className="mt-4 text-xs text-text-dim">
         First visit? <a href="/ca.crt" className="text-accent">Download the site certificate</a>
       </p>
+      {site.lan_addr && (
+        <details className="mt-2 text-xs text-text-dim">
+          <summary>Can't reach {site.hostname}?</summary>
+          <p className="mt-1">Add this line to your computer's hosts file:</p>
+          <code className="block select-all font-mono">{site.lan_addr} {site.hostname}</code>
+        </details>
+      )}
     </PublicPage>
   );
 }

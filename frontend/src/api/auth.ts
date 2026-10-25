@@ -41,6 +41,9 @@ export const forgotPassword = (email: string) =>
 export const applyOpen = () =>
   apiFetch<{ open: boolean }>("/api/public/apply-open").then((r) => r.open);
 
+export const siteInfo = () =>
+  apiFetch<{ hostname: string; lan_addr: string }>("/api/public/site");
+
 export type Application = {
   email: string;
   full_name: string;
