@@ -13,6 +13,7 @@ from deckagent.slurmcmd import run_slurm
 from deckagent.verbs import verb
 from sdcore.slurmparse import (
     SQUEUE_FORMAT,
+    NodeStats,
     merge_gpu_stats,
     parse_scontrol_node,
     parse_slurm_duration,
@@ -30,14 +31,21 @@ def _stats_file(path: str) -> tuple[dict[str, Any] | None, float | None]:
         return None, None
 
 
-@verb("cluster.status", allow=ALL)
-def status(ctx: RequestContext, payload: dict[str, Any]) -> dict[str, Any]:
+def node_stats(ctx: RequestContext) -> NodeStats | None:
+    """The compute node from scontrol, with the GPU stats file merged in."""
     cfg = ctx.config
     node = parse_scontrol_node(run_slurm(cfg, ["scontrol", "show", "node", cfg.compute_node,
                                                "--oneliner"])) if cfg.compute_node else None
     if node is not None:
         gpu_json, mtime = _stats_file(cfg.stats_file)
         node = merge_gpu_stats(node, gpu_json, time.time(), mtime=mtime)
+    return node
+
+
+@verb("cluster.status", allow=ALL)
+def status(ctx: RequestContext, payload: dict[str, Any]) -> dict[str, Any]:
+    cfg = ctx.config
+    node = node_stats(ctx)
     part = run_slurm(cfg, ["scontrol", "show", "partition", cfg.partition, "--oneliner"])
     max_time = next((t.partition("=")[2] for t in part.split() if t.startswith("MaxTime=")), "")
     return {"node": asdict(node) if node else None,

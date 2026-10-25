@@ -92,6 +92,10 @@ class GpuHost:
     def delete_account(self, user: str) -> None:
         self._call("delete-account", self._user(user))
 
+    def service_status(self) -> dict[str, str]:
+        units = self._call("service-status").get("units", {})
+        return {str(k): str(v) for k, v in units.items()}
+
     def ping(self) -> bool:
         try:
             return self._call("ping").get("pong") is True

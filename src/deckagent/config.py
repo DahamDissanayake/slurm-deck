@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 
+RESIZE_SCRIPT = "/opt/slurm-deck-web/deploy/cluster/resize-pods.sh"
+
 
 @dataclass(frozen=True)
 class AgentConfig:
@@ -34,6 +36,7 @@ class AgentConfig:
     max_json_bytes: int
     upload_resume_hours: int
     session_ports: tuple[int, int] = (8800, 8999)
+    resize_script: str = RESIZE_SCRIPT
 
 
 def _int(env: Mapping[str, str], key: str, default: int | None = None) -> int:
@@ -89,4 +92,5 @@ def load_config(env: Mapping[str, str]) -> AgentConfig:
         max_json_bytes=_int(env, "SD_MAX_JSON_BYTES", 1024 * 1024),
         upload_resume_hours=_int(env, "UPLOAD_RESUME_HOURS", 24),
         session_ports=_port_range(env),
+        resize_script=env.get("SD_RESIZE_SCRIPT") or RESIZE_SCRIPT,
     )

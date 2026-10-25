@@ -35,7 +35,8 @@ def _json(r: subprocess.CompletedProcess) -> dict:
                                  "create-account x 0", "create-account x abc",
                                  "create-account x 70000", "rm -rf /", "purge amasha; id",
                                  "purge amasha extra", "ping now", "", "folder-info Root",
-                                 "delete-account slurmadmin", "create-folders sdweb 20001"])
+                                 "delete-account slurmadmin", "create-folders sdweb 20001",
+                                 "service-status slurmd"])
 def test_refuses_bad_commands(tmp_path, cmd):
     r = run_helper(cmd, tmp_path)
     assert r.returncode == 2, (cmd, r.stdout, r.stderr)
@@ -45,6 +46,11 @@ def test_refuses_bad_commands(tmp_path, cmd):
 def test_ping():
     r = run_helper("ping")
     assert r.returncode == 0 and _json(r) == {"ok": True, "pong": True}
+
+
+def test_service_status_reports_only_the_allowed_units():
+    r = run_helper("service-status")
+    assert r.returncode == 0 and set(_json(r)["units"]) == {"slurmd", "munge", "sd-stats-writer"}
 
 
 def test_uid_of_another_account_refused(tmp_path):
