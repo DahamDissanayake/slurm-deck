@@ -39,6 +39,8 @@ EXTRA_FILES = frozenset({"tbguard.py"})
 EXTRA_MAX = 64 * 1024
 _WRITE = ("import os, sys; fd = os.open(sys.argv[1], os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o640);"
           " os.write(fd, sys.stdin.buffer.read())")
+SECRET_FILE = ".hf_token"   # the one secret a job folder may hold: a HuggingFace token
+SECRET_RE = re.compile(r"[!-~]{1,512}")   # printable, no whitespace
 
 _locks: dict[str, threading.Lock] = {}
 _locks_guard = threading.Lock()
@@ -82,6 +84,16 @@ def _extra_files(raw: Any) -> dict[str, str]:
     return dict(raw)
 
 
+def _secret_file(raw: Any) -> str | None:
+    """The content of the token file the job reads and deletes, or None."""
+    if raw is None:
+        return None
+    if (not isinstance(raw, dict) or raw.get("name") != SECRET_FILE
+            or not isinstance(raw.get("content"), str) or not SECRET_RE.fullmatch(raw["content"])):
+        raise AgentError("bad_secret_file", "Only a HuggingFace token file can be added.", 422)
+    return str(raw["content"])
+
+
 @verb("job.submit", allow=PEOPLE)
 def submit(ctx: RequestContext, payload: dict[str, Any]) -> dict[str, Any]:
     """as_ops (admins only): run as sd-ops, for work on the shared areas such
@@ -99,6 +111,7 @@ def submit(ctx: RequestContext, payload: dict[str, Any]) -> dict[str, Any]:
     if problems:
         raise AgentError("bad_script", "; ".join(problems), 422, {"problems": problems})
     extra = _extra_files(payload.get("extra_files"))
+    secret = _secret_file(payload.get("secret_file"))
     ident = _ops_identity(caller, cfg) if as_ops else _identity(caller, cfg)
     folder = f"{user_job_root(cfg.nfs_root, user, subdir)}/{folder_name}"
     path = f"{folder}/job.sbatch"
@@ -106,6 +119,9 @@ def submit(ctx: RequestContext, payload: dict[str, Any]) -> dict[str, Any]:
     _as_user(ident, [sys.executable, "-c", _WRITE, path], script.encode())
     for name, text in extra.items():
         _as_user(ident, [sys.executable, "-c", _WRITE, f"{folder}/{name}"], text.encode())
+    if secret is not None:   # 0600: the folder is group-readable, this file is not
+        _as_user(ident, [sys.executable, "-c", _WRITE.replace("0o640", "0o600"),
+                         f"{folder}/{SECRET_FILE}"], secret.encode())
     out = run_slurm(cfg, ["sbatch", "--parsable", path], as_ident=ident, timeout=30)
     return {"job_id": out.strip().split(";")[0], "folder": folder}
 
