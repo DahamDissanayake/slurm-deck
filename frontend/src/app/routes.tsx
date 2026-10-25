@@ -10,6 +10,7 @@ import { Hardware } from "../pages/Hardware";
 import { Home } from "../pages/Home";
 import { JobDetail } from "../pages/JobDetail";
 import { Jobs } from "../pages/Jobs";
+import { Models } from "../pages/Models";
 import { NewJob } from "../pages/NewJob";
 import { Notify } from "../pages/Notify";
 import { Placeholder } from "../pages/Placeholder";
@@ -31,7 +32,6 @@ const PUBLIC: [string, () => ReactNode][] = [
 
 // Every signed-in page; later phases replace the placeholders.
 const PAGES: [string, string][] = [
-  ["/models", "Models"],
   ["/account/password", "Change password"],
 ];
 
@@ -45,6 +45,7 @@ export function App() {
   }
   if (pathname === "/new") return <AppShell><NewJob /></AppShell>;
   if (pathname === "/notify") return <AppShell><Notify /></AppShell>;
+  if (pathname === "/models") return <AppShell><Models /></AppShell>;
   if (pathname === "/services") return <AppShell><Services /></AppShell>;
   if (pathname === "/usage") return <AppShell><Usage /></AppShell>;
   if (pathname === "/usage/hardware") return <AppShell><Hardware /></AppShell>;
