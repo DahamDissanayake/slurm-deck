@@ -37,6 +37,15 @@ class Upstream:
         def bare():
             return RedirectResponse("/login")
 
+        @app.get("/notebook/42/hostile")
+        def hostile():
+            # What a user's own job could send back to whoever opens it (SLURM-49 finding 1).
+            r = JSONResponse({"ok": True})
+            r.set_cookie("sd_session", "attacker-token", path="/")
+            r.headers["Service-Worker-Allowed"] = "/"
+            r.headers["Clear-Site-Data"] = '"cookies"'
+            return r
+
         @app.get("/notebook/42/{rest:path}")
         def get(rest: str, request: Request):
             self.last_headers = dict(request.headers)
@@ -148,6 +157,22 @@ def test_admin_allowed_and_audited(proxy):
         assert len(rows) == 1 and rows[0].target == "42"
         assert rows[0].actor_id is not None and rows[0].acting_admin_id == rows[0].actor_id
         assert rows[0].detail["owner"] == "amasha"
+
+
+@pytest.mark.xfail(strict=True, reason="SLURM-56: the proxy passes the job's Set-Cookie, "
+                   "Service-Worker-Allowed and Clear-Site-Data headers to the browser")
+def test_job_cannot_set_platform_cookie_or_service_worker_scope(proxy):
+    """An admin opening a user's session must not get the job's cookies or
+    origin-wide headers: the session is served on the platform's own origin."""
+    _, _, c, _ = proxy
+    admin = c["dinuka"]
+    own_token = admin.cookies["sd_session"]
+    r = admin.get("/notebook/42/hostile")
+    assert r.status_code == 200
+    assert "sd_session" not in r.headers.get("set-cookie", "")
+    assert "service-worker-allowed" not in r.headers
+    assert "clear-site-data" not in r.headers
+    assert admin.cookies["sd_session"] == own_token
 
 
 def test_not_ready_shows_starting_page(proxy):
