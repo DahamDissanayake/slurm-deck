@@ -1,5 +1,5 @@
 import { useSession } from "../api/sessions";
-import { smallButton } from "./buttons";
+import { small as smallButton } from "./controls";
 
 /** Opens a notebook, TensorBoard or terminal in a new tab. Disabled, and
  * saying "Starting…", until the session is ready. */

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { AdminLayout } from "../pages/admin/AdminLayout";
+import { About } from "../pages/About";
 import { Apply } from "../pages/Apply";
 import { ClusterStatus } from "../pages/ClusterStatus";
 import { Environments } from "../pages/Environments";
@@ -28,6 +29,7 @@ const PUBLIC: [string, () => ReactNode][] = [
   ["/set-password", () => <SetPassword />],
   ["/reset-password", () => <SetPassword />],
   ["/forgot-password", () => <ForgotPassword />],
+  ["/about", () => <About />],
 ];
 
 // Every signed-in page; later phases replace the placeholders.

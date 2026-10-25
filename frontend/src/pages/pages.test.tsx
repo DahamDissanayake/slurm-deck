@@ -63,6 +63,7 @@ describe("ThemeToggle", () => {
       throw new Error("blocked");
     });
     render(<ThemeToggle />);
+    expect(screen.getByRole("button", { name: /theme$/ })).toHaveAttribute("title");
     fireEvent.click(screen.getByRole("button"));
     const first = document.documentElement.dataset.theme;
     expect(["light", "dark"]).toContain(first);

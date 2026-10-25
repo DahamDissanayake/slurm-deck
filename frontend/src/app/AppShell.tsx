@@ -1,6 +1,7 @@
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 
 import { getMe, type Me, signOut, stopViewing } from "../api/auth";
+import { iconButton, KeyIcon, SignOutIcon } from "../components/icons";
 import { Wordmark } from "../components/Wordmark";
 import { Link, navigate, useLocation } from "./navigation";
 import { ThemeToggle } from "./ThemeToggle";
@@ -33,12 +34,14 @@ export function AppShell({ children }: { children: ReactNode }) {
         <Link href="/"><Wordmark /></Link>
         <div id="cluster-status" className="text-sm text-text-dim" />
         <div className="flex items-center gap-3 text-sm">
+          <Link href="/about" className="text-text-dim hover:text-accent">About</Link>
           <ThemeToggle />
           <span className="text-text-dim">{me.account.full_name}</span>
-          <Link href="/account/password" className="text-accent">Change password</Link>
-          <button type="button" className="text-accent"
+          <Link href="/account/password" className={iconButton} title="Change password"
+                aria-label="Change password"><KeyIcon /></Link>
+          <button type="button" className={iconButton} title="Sign out" aria-label="Sign out"
                   onClick={() => signOut().finally(() => navigate("/sign-in"))}>
-            Sign out
+            <SignOutIcon />
           </button>
         </div>
       </header>

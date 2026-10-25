@@ -10,6 +10,7 @@ import { Panel } from "../components/Panel";
 import { Preview } from "../components/Preview";
 import { TextEditor } from "../components/TextEditor";
 import { UploadPanel } from "../components/UploadPanel";
+import { danger } from "../components/controls";
 import { secondary } from "./NewJob/StepInputs";
 
 const EDIT_MAX = 1024 * 1024;
@@ -97,7 +98,7 @@ export function Files() {
                 <button type="button" className={secondary}
                         onClick={() => act(() => files.extract(path, dir))}>Extract</button>
               )}
-              <button type="button" className={`${secondary} text-danger`} onClick={remove}>Delete</button>
+              <button type="button" className={`${danger}`} onClick={remove}>Delete</button>
             </>
           )}
         </div>

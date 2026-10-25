@@ -21,7 +21,7 @@ export const csrfToken = () => csrf;
 type Init = RequestInit & { json?: unknown };
 
 const PUBLIC_PATHS = ["/sign-in", "/apply", "/set-password", "/reset-password",
-                      "/forgot-password"];
+                      "/forgot-password", "/about"];
 
 export async function apiFetch<T = unknown>(path: string, init: Init = {}): Promise<T> {
   const { json, ...rest } = init;
