@@ -123,21 +123,17 @@ def test_the_first_admin_is_listed_in_the_admins_file_before_create_admin(ctx):
 def test_admins_add_cmd_lists_a_name_once_and_keeps_the_others(tmp_path):
     import getpass
     f = tmp_path / "admins"
-    f.write_text("kasun
-")
+    f.write_text("kasun\n")
     f.chmod(0o664)
     owner = f"{getpass.getuser()}:"
     for _ in range(2):
         subprocess.run(["sh", "-c", steps.admins_add_cmd(str(f), "ada", owner)], check=True)
-    assert f.read_text() == "kasun
-ada
-"
+    assert f.read_text() == "kasun\nada\n"
     assert f.stat().st_mode & 0o777 == 0o644
     (tmp_path / "new").unlink(missing_ok=True)
     subprocess.run(["sh", "-c", steps.admins_add_cmd(str(tmp_path / "new"), "ada", owner)],
                    check=True)
-    assert (tmp_path / "new").read_text() == "ada
-"
+    assert (tmp_path / "new").read_text() == "ada\n"
 
 
 def test_network_waits_for_a_hand_made_forward_and_installs_the_scripts_on_the_gpu_host(ctx):

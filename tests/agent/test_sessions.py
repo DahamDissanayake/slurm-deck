@@ -136,13 +136,7 @@ def test_listing_alone_does_not_make_a_user_row_an_admin():
 
 def test_read_admins_takes_one_name_per_line(tmp_path):
     f = tmp_path / "admins"
-    f.write_text("# web admins
-dinuka
-
-  kasun  
-Not A Name
-root;rm
-")
+    f.write_text("# web admins\ndinuka\n\n  kasun  \nNot A Name\nroot;rm\n")
     f.chmod(0o644)
     assert read_admins(str(f), owner_uid=os.getuid()) == {"dinuka", "kasun"}
 
@@ -153,8 +147,7 @@ def test_read_admins_missing_file_is_empty(tmp_path):
 
 def test_read_admins_refuses_a_file_owned_by_someone_else(tmp_path):
     f = tmp_path / "admins"
-    f.write_text("dinuka
-")
+    f.write_text("dinuka\n")
     f.chmod(0o644)
     assert read_admins(str(f), owner_uid=os.getuid() + 1) == frozenset()
 
@@ -162,16 +155,14 @@ def test_read_admins_refuses_a_file_owned_by_someone_else(tmp_path):
 @pytest.mark.parametrize("mode", [0o664, 0o646])
 def test_read_admins_refuses_a_group_or_world_writable_file(tmp_path, mode):
     f = tmp_path / "admins"
-    f.write_text("dinuka
-")
+    f.write_text("dinuka\n")
     f.chmod(mode)
     assert read_admins(str(f), owner_uid=os.getuid()) == frozenset()
 
 
 def test_read_admins_refuses_a_symlink(tmp_path):
     real = tmp_path / "real"
-    real.write_text("dinuka
-")
+    real.write_text("dinuka\n")
     real.chmod(0o644)
     (tmp_path / "admins").symlink_to(real)
     assert read_admins(str(tmp_path / "admins"), owner_uid=os.getuid()) == frozenset()
