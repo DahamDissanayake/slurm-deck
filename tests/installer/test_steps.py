@@ -28,9 +28,11 @@ REPLIES = {r"^id -u sdweb": "990\n", r"^id -g sdweb": "990\n", r"^id -u sdworker
 class FakeTarget(steps.Target):
     def __init__(self, name):
         self.name, self.cmds, self.fail_on, self.codes = name, [], None, {}
+        self.inputs = []
 
     def run(self, cmd, input_text=None, check=True):
         self.cmds.append(cmd)
+        self.inputs.append(input_text or "")
         if self.fail_on and re.search(self.fail_on, cmd):
             raise steps.InstallError(f"{self.name}: {cmd} failed")
         out = next((v for k, v in REPLIES.items() if re.search(k, cmd)), "")
@@ -74,7 +76,7 @@ def test_templates_never_contain_an_empty_required_value():
               "timezone": "UTC", "mail_provider": "none", "mail_from": "", "web_uid": 1,
               "slurm_account": "default", "slurm_qos": "normal",
               "web_gid": 1, "worker_uid": 2, "worker_gid": 2, "db_password": "x",
-              "agent_db_password": "y"}
+              "agent_db_password": "y", "compose_dir": "/srv/deploy"}
     for tmpl in sorted(steps.TEMPLATES.glob("*.tmpl")):
         assert not re.search(r"=$", steps.render(tmpl.name, {**values, "mail_from": "x"}), re.M)
         with pytest.raises(steps.InstallError):
@@ -101,3 +103,12 @@ def test_network_waits_for_a_hand_made_forward_and_installs_the_scripts_on_the_g
     assert any("systemctl enable --now sd-mdns-alias" in c for c in ctx.gpu.cmds)
     ctx.gpu.codes = {"sd-web-forward.sh --apply": 2}   # the 2225 forward wasn't found
     assert steps.network(ctx) is False
+
+
+def test_backups_install_a_timer_for_the_admin_account_in_the_cluster_timezone(ctx):
+    ctx.state.data["answers"]["timezone"] = "Asia/Colombo"
+    steps.backups(ctx)
+    written = " ".join(ctx.login.inputs)
+    assert "OnCalendar=*-*-* 02:30:00 Asia/Colombo" in written and "@CLUSTER_TZ@" not in written
+    assert f"ExecStart={REPO}/deploy/cluster/sd-backup.sh" in written and "@REPO@" not in written
+    assert "systemctl daemon-reload && systemctl enable --now sd-backup.timer" in ctx.login.cmds
