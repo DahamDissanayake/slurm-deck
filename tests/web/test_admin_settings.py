@@ -47,7 +47,8 @@ def test_the_extension_cap_cannot_pass_the_partition_maximum(adm):
 
 def test_changes_are_audited_with_old_and_new_and_one_bad_value_saves_nothing(adm):
     app, _, admin = adm
-    assert admin.put(URL, json={"submit_rate_per_hour": 5, "disk_alert_percent": 85}).status_code == 200
+    both = {"submit_rate_per_hour": 5, "disk_alert_percent": 85}
+    assert admin.put(URL, json=both).status_code == 200
     admin.put(URL, json={"submit_rate_per_hour": 5})   # unchanged: no event
     with app.state.sessionmaker() as s:
         events = {e.target: e.detail for e in s.scalars(

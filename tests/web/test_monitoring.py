@@ -40,7 +40,7 @@ def test_the_audit_trail_filters_by_actor_and_action_and_pages(mon):
         ids = {u: s.query(Account).filter_by(username=u).one().id for u in ("amasha", "dinuka")}
         for who, action in (("amasha", "job.cancel"), ("amasha", "file.delete"),
                             ("dinuka", "job.cancel"), ("dinuka", "settings.change")):
-            s.add(AuditEvent(actor_id=ids[who], action=action, target="t", result="ok", source="web"))
+            s.add(AuditEvent(actor_id=ids[who], action=action, result="ok", source="web"))
     ev = admin.get("/api/admin/audit?actor=amasha&action=job").json()["events"]
     assert [(e["action"], e["actor"]) for e in ev] == [("job.cancel", "amasha")]
     first = admin.get("/api/admin/audit?action=job&page_size=1").json()
@@ -73,14 +73,16 @@ def test_the_mail_log_shows_each_state(mon):
                                 sent_at=sent, last_error=err))
     seen = {m["subject"]: m["status"] for m in admin.get("/api/admin/mail-log").json()["mail"]}
     assert seen == {"a": "sent", "b": "pending", "c": "failed", "d": "disabled"}
-    assert [m["subject"] for m in admin.get("/api/admin/mail-log?status=failed").json()["mail"]] == ["c"]
+    failed = admin.get("/api/admin/mail-log?status=failed").json()["mail"]
+    assert [m["subject"] for m in failed] == ["c"]
     assert admin.get("/api/admin/mail-log?status=nope").status_code == 422
 
 
 def test_the_agent_log_and_services_come_from_deck_agent_for_admins_only(mon):
     app, user, admin = mon
     assert admin.get("/api/admin/agent-audit?since=2026-10-25T00:00:00&limit=20").json()["events"]
-    assert app.state.agent.calls == [("admin.audit_tail", {"since_ts": "2026-10-25T00:00:00", "limit": 20})]
+    sent = {"since_ts": "2026-10-25T00:00:00", "limit": 20}
+    assert app.state.agent.calls == [("admin.audit_tail", sent)]
     assert admin.get("/api/admin/services").json()["login"] == {"munge": "active"}
     for path in ("/audit", "/agent-audit", "/mail-log", "/services"):
         assert user.get(f"/api/admin{path}").status_code == 403

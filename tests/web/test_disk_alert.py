@@ -26,7 +26,7 @@ def test_active_admins_are_mailed_once_in_24_hours_and_only_over_the_threshold(e
     app = env[0]
     with app.state.sessionmaker() as s, s.begin():   # tables the shared fixture doesn't reset
         s.execute(text("TRUNCATE outbox"))
-        s.execute(text("DELETE FROM settings WHERE key IN ('last_disk_alert_at', 'disk_alert_percent')"))
+        s.execute(text("DELETE FROM settings WHERE key LIKE '%disk_alert%'"))
     for name, role, status in (("dinuka", "admin", "active"), ("kasun", "admin", "active"),
                                ("amasha", "user", "active"), ("gone", "admin", "disabled")):
         _account(app, name, role=role, status=status)
