@@ -87,7 +87,7 @@ def build_script(account: Account, ls: LaunchSpec, settings: WebSettings,
         return render_batch(spec, folder, home, "END,FAIL",
                             nfs_root=settings.nfs_root), folder_name
     lo, hi = settings.session_ports
-    opts = SessionOptions(f"https://{settings.public_hostname}", settings.jupyter_env, lo, hi)
+    opts = SessionOptions(f"https://{settings.session_hostname}", settings.jupyter_env, lo, hi)
     args = (spec, folder, home, _env(ls))
     if ls.intent == "notebook":
         return render_notebook(*args, opts, "END,FAIL", nfs_root=settings.nfs_root), folder_name

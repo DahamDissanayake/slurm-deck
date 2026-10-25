@@ -88,7 +88,8 @@ def is_open(db: Db) -> dict:
 @router.get("/api/public/site")
 def site(settings: Settings) -> dict:
     """What the sign-in page needs to help someone whose network can't resolve the name."""
-    return {"hostname": settings.public_hostname, "lan_addr": settings.lan_addr}
+    return {"hostname": settings.public_hostname, "lan_addr": settings.lan_addr,
+            "session_hostname": settings.session_hostname}
 
 
 @router.post("/api/public/applications", status_code=201)

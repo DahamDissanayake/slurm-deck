@@ -29,6 +29,7 @@ from sdweb.jobs.templates import router as templates_router
 from sdweb.live.routes import router as live_router
 from sdweb.modelslib.routes import router as models_router
 from sdweb.notify.routes import router as notify_router
+from sdweb.proxy.guard import SessionOriginGuard
 from sdweb.proxy.routes import router as proxy_router
 from sdweb.usage.routes import router as usage_router
 
@@ -56,6 +57,7 @@ def create_app(settings: WebSettings, agent: Any | None = None) -> FastAPI:
                    notify_router, uploads_router, files_router, envs_router, proxy_router,
                    usage_router, admin_router, models_router):
         app.include_router(router)
+    app.add_middleware(SessionOriginGuard, session_hostname=settings.session_hostname)
     return app
 
 

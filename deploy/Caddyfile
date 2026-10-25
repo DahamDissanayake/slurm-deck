@@ -50,3 +50,18 @@ http://{$SD_PUBLIC_HOSTNAME} {
 		reverse_proxy web:8000
 	}
 }
+
+# Notebooks, TensorBoard and terminals live on their own name, so a job's pages
+# never share an origin with the app (SLURM-56). The web app answers only
+# /notebook, /tensorboard, /terminal and /_sd here; everything else is a 404.
+http://{$SD_SESSION_HOSTNAME} {
+	redir https://{host}{uri} permanent
+}
+
+{$SD_SESSION_HOSTNAME} {
+	tls internal
+
+	reverse_proxy web:8000 {
+		flush_interval -1
+	}
+}

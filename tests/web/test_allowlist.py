@@ -53,4 +53,5 @@ def test_the_public_site_info_gives_the_hostname_and_lan_address(env):
     app = env[0]
     app.state.settings = replace(app.state.settings, lan_addr="10.35.4.100")
     r = TestClient(app, base_url="https://testserver").get("/api/public/site")
-    assert r.json() == {"hostname": "deck.x.org", "lan_addr": "10.35.4.100"}
+    assert r.json() == {"hostname": "deck.x.org", "lan_addr": "10.35.4.100",
+                        "session_hostname": "sessions.deck.x.org"}

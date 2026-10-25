@@ -42,7 +42,7 @@ export const applyOpen = () =>
   apiFetch<{ open: boolean }>("/api/public/apply-open").then((r) => r.open);
 
 export const siteInfo = () =>
-  apiFetch<{ hostname: string; lan_addr: string }>("/api/public/site");
+  apiFetch<{ hostname: string; lan_addr: string; session_hostname: string }>("/api/public/site");
 
 export type Application = {
   email: string;

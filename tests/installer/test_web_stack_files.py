@@ -44,3 +44,13 @@ def test_caddy_serves_the_ca_and_redirects_http():
     assert "tls internal" in text
     assert "/ca.crt" in text and "root.crt" in text
     assert "redir https://{host}{uri}" in text
+
+
+def test_caddy_serves_sessions_on_their_own_name():
+    text = (DEPLOY / "Caddyfile").read_text()
+    assert "http://{$SD_SESSION_HOSTNAME} {" in text
+    block = text.split("\n{$SD_SESSION_HOSTNAME} {", 1)[1]
+    assert "tls internal" in block and "reverse_proxy web:8000" in block
+    assert "flush_interval -1" in block and "/ca.crt" not in block
+    caddy_env = _services()["caddy"]["environment"]
+    assert caddy_env["SD_SESSION_HOSTNAME"].startswith("${SD_SESSION_HOSTNAME:?")

@@ -88,6 +88,7 @@ services:
     image: caddy:2
     environment:
       SD_PUBLIC_HOSTNAME: ${SD_PUBLIC_HOSTNAME:?set SD_PUBLIC_HOSTNAME}
+      SD_SESSION_HOSTNAME: ${SD_SESSION_HOSTNAME:?set SD_SESSION_HOSTNAME}
     ports:
       - "80:80"
       - "443:443"
