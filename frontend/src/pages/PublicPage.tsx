@@ -2,6 +2,7 @@ import { type InputHTMLAttributes, type ReactNode, useId } from "react";
 import { full, input, primary } from "../components/controls";
 
 import pkg from "../../package.json";
+import { Link } from "../app/navigation";
 import { ThemeToggle } from "../app/ThemeToggle";
 import { Panel } from "../components/Panel";
 import { Wordmark } from "../components/Wordmark";
@@ -22,6 +23,7 @@ export function PublicPage({ title, children }: { title: string; children: React
       <Panel title={title}>{children}</Panel>
       <footer className="text-center text-xs text-text-dim">
         Slurm Deck · v{pkg.version} · MIT ·{" "}
+        <Link href="/about" className="text-accent">About</Link> ·{" "}
         <a className="text-accent" href={SOURCE}>source</a>
       </footer>
     </div>
