@@ -262,6 +262,7 @@ def _values(ctx: Ctx) -> dict[str, Any]:
     gid = lambda user: ctx.out(ctx.login, f"id -g {user}", "<gid>")  # noqa: E731
     return {**ctx.answers, "web_uid": uid("sdweb"), "web_gid": gid("sdweb"),
             "worker_uid": uid("sdworker"), "worker_gid": gid("sdworker"),
+            "compose_dir": str(ctx.repo / "deploy"),
             "db_password": ctx.secret("db_password"), "agent_db_password": ctx.secret("agent_db_password")}
 
 
@@ -304,6 +305,18 @@ def web_stack(ctx: Ctx) -> None:
         ctx.log(r.stdout.strip())
 
 
+def backups(ctx: Ctx) -> None:
+    """The nightly backup: a timer that runs deploy/cluster/sd-backup.sh as the admin account."""
+    a, systemd = ctx.answers, ctx.repo / "deploy/systemd"
+    unit = (systemd / "sd-backup.service").read_text().replace("@REPO@", str(ctx.repo))
+    timer = (systemd / "sd-backup.timer").read_text().replace("@CLUSTER_TZ@", a["timezone"])
+    ctx.login.run(f"install -d -m 0700 -o {shlex.quote(a['admin_unix_user'])} /var/backups/slurm-deck")
+    ctx.login.write("/etc/systemd/system/sd-backup.service",
+                    unit.replace("User=slurmadmin", f"User={a['admin_unix_user']}"))
+    ctx.login.write("/etc/systemd/system/sd-backup.timer", timer)
+    ctx.login.run("systemctl daemon-reload && systemctl enable --now sd-backup.timer")
+
+
 def network(ctx: Ctx) -> bool:
     """On the GPU host: forward 80 and 443 to the login node, limit the session ports to it,
     and publish the name over mDNS. Returns False (tried again next run) when the host's
@@ -344,7 +357,7 @@ STEPS: list[tuple[str, Callable[[Ctx], Any]]] = [
     ("preflight", preflight), ("site_values", site_values), ("accounts_login", accounts_login),
     ("gpuhost_bootstrap", gpuhost_bootstrap), ("slurm_assoc", slurm_assoc),
     ("secrets", secrets_step), ("agent", agent), ("web_stack", web_stack),
-    ("network", network), ("summary", summary),
+    ("backups", backups), ("network", network), ("summary", summary),
 ]
 
 

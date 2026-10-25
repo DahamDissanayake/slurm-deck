@@ -1,0 +1,14 @@
+[Unit]
+Description=Slurm Deck nightly backup (database dump and config)
+After=docker.service
+
+[Service]
+Type=oneshot
+# The installer replaces @REPO@ with this checkout's path.
+User=slurmadmin
+# slurmadmin needs to read the root-only config (agent.env) and the agent's audit log, and nothing else.
+AmbientCapabilities=CAP_DAC_READ_SEARCH
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH
+EnvironmentFile=-/etc/slurm-deck-web/site.env
+EnvironmentFile=-/etc/slurm-deck-web/backup.env
+ExecStart=@REPO@/deploy/cluster/sd-backup.sh
