@@ -10,9 +10,12 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Request
 
 from sdweb.accounts.service import agent_call
+from sdweb.admin import monitoring_routes, settings_routes
 from sdweb.deps import SessionCtx, require_admin, require_csrf
 
 router = APIRouter(prefix="/api/admin")
+router.include_router(settings_routes.router)
+router.include_router(monitoring_routes.router)
 
 
 def _admin_csrf(ctx: Annotated[SessionCtx, Depends(require_csrf)]) -> SessionCtx:
