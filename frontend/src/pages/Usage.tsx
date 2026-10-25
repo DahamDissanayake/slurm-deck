@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { ApiError } from "../api/client";
-import { DAYS, type Personal, usage } from "../api/usage";
+import { DAYS, type Totals, usage } from "../api/usage";
 import { Panel } from "../components/Panel";
 import { UsageTabs } from "../components/UsageTabs";
 
@@ -38,7 +38,7 @@ export function StateBar({ counts }: { counts: Record<string, number> }) {
 /** My GPU-hours, CPU-hours and jobs over the last 7, 30 or 90 days. */
 export function Usage() {
   const [days, setDays] = useState(30);
-  const [data, setData] = useState<Personal | null>(null);
+  const [data, setData] = useState<Totals | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {

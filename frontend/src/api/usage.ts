@@ -4,9 +4,7 @@ export type Days = 7 | 30 | 90;
 export const DAYS: Days[] = [7, 30, 90];
 
 export type Totals = { gpu_hours: number; cpu_hours: number; jobs_by_state: Record<string, number> };
-export type Personal = Totals & { days: number; pods_total: number };
-export type ClusterUsage = { days: number; pods_total: number; total: Totals;
-                             users: (Totals & { user: string })[] };
+export type ClusterUsage = { total: Totals; users: (Totals & { user: string })[] };
 export type DiskUsage = { total_bytes: number;
                           users: { user: string; bytes: number; users_bytes: number;
                                    jobs_bytes: number }[] };
@@ -21,7 +19,7 @@ export type ClusterStatus = { node: Node | null; pods_total: number; pods_used: 
                               partition_max_s: number | null };
 
 export const usage = {
-  personal: (days: number) => apiFetch<Personal>(`/api/usage?days=${days}`),
+  personal: (days: number) => apiFetch<Totals>(`/api/usage?days=${days}`),
   cluster: (days: number) => apiFetch<ClusterUsage>(`/api/admin/usage?days=${days}`),
   disk: () => apiFetch<DiskUsage>("/api/admin/disk-usage"),
   status: () => apiFetch<ClusterStatus>("/api/cluster/status"),

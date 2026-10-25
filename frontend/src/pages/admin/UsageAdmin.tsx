@@ -18,7 +18,7 @@ export function UsageAdmin() {
 
   useEffect(() => {
     setReport(null);
-    usage.cluster(days).then(setReport, () => setReport({ days, pods_total: 0, users: [],
+    usage.cluster(days).then(setReport, () => setReport({ users: [],
       total: { gpu_hours: 0, cpu_hours: 0, jobs_by_state: {} } }));
   }, [days]);
   useEffect(() => {

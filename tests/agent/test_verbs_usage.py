@@ -52,7 +52,7 @@ def test_personal_usage_is_computed_as_the_user(usage):
     # The node has 8 pods: 4 pods for 3 h is 1.5 GPU-hours.
     r = usage.call("usage.personal", {"days": 30})
     assert r["gpu_hours"] == 1.5 and r["cpu_hours"] == 8 * 3 + 2 * 1
-    assert r["jobs_by_state"] == {"COMPLETED": 1, "FAILED": 1} and r["days"] == 30
+    assert r["jobs_by_state"] == {"COMPLETED": 1, "FAILED": 1}
     assert ("amasha", "sacct") in usage.ran and "now-30days" in usage.calls()
     assert _status(usage, "usage.personal", {"days": 10}) == 422   # only 7, 30 or 90
 
