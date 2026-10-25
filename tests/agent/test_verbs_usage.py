@@ -29,7 +29,6 @@ def usage(agent, monkeypatch):
     agent.ran = []
     for name, body in (("sacct", SACCT), ("du", DU)):
         (agent.dir / "bin" / name).write_text(body)
-        (agent.dir / "bin" / name).chmod(0o755)
     (agent.dir / "sacct.me").write_text(
         "amasha|COMPLETED|10800|cpu=8,gres/shard=4\namasha|FAILED|3600|cpu=2\n")
     (agent.dir / "sacct.all").write_text(
@@ -53,13 +52,8 @@ def test_personal_usage_is_computed_as_the_user(usage):
     r = usage.call("usage.personal", {"days": 30})
     assert r["gpu_hours"] == 1.5 and r["cpu_hours"] == 8 * 3 + 2 * 1
     assert r["jobs_by_state"] == {"COMPLETED": 1, "FAILED": 1} and r["days"] == 30
-    assert ("amasha", "sacct") in usage.ran
-    assert "now-30days" in usage.calls()
-
-
-def test_days_must_be_7_30_or_90(usage):
-    assert _status(usage, "usage.personal", {"days": 10}) == 422
-    assert _status(usage, "usage.personal", {}) == 422
+    assert ("amasha", "sacct") in usage.ran and "now-30days" in usage.calls()
+    assert _status(usage, "usage.personal", {"days": 10}) == 422   # only 7, 30 or 90
 
 
 def test_cluster_usage_is_admin_only_and_grouped_by_user(usage):

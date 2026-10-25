@@ -1,6 +1,5 @@
 import { useCallback } from "react";
 
-import { duration } from "../api/jobs";
 import { usePolled } from "../api/poll";
 import { usage } from "../api/usage";
 import { Panel } from "../components/Panel";
@@ -52,7 +51,6 @@ export function ClusterStatus() {
           <Item label="Pods in use" value={`${data.status.pods_used} of ${data.status.pods_total}`} />
           <Item label="Jobs running" value={String(running)} />
           <Item label="Jobs waiting" value={String(pending)} />
-          <Item label="Longest job" value={duration(data.status.partition_max_s)} />
         </dl>
       )}
     </Panel>

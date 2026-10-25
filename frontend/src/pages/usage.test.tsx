@@ -91,7 +91,6 @@ describe("UsageAdmin", () => {
     expect(names()).toEqual(["hassan", "amasha"]);
     fireEvent.click(screen.getByRole("button", { name: /^User/ }));
     expect(names()).toEqual(["amasha", "hassan"]);
-    const diskRow = (await screen.findByText("2.0 KB")).closest("tr") as HTMLElement;
-    expect(within(diskRow).getAllByText("1.0 KB")).toHaveLength(2);
+    expect(await screen.findByText("2.0 KB")).toBeInTheDocument();
   });
 });

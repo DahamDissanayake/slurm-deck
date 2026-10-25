@@ -25,21 +25,14 @@ export function Hardware() {
       {!data && !failed && <p className="text-text-dim">Loading…</p>}
       {data && !n && <p className="text-text-dim">The GPU node isn't reporting.</p>}
       {n && (
-        <>
-          {!n.live_stats && (
-            <p role="note" className="mb-3 text-warning">
-              These numbers are out of date: the node hasn't reported recently.
-            </p>
-          )}
-          <dl className="grid gap-3 sm:grid-cols-2">
-            {rows.map(([label, value]) => (
-              <div key={label} className="rounded-sm border border-border bg-surface-2 p-3">
-                <dt className="text-sm text-text-dim">{label}</dt>
-                <dd className="text-lg">{value}</dd>
-              </div>
-            ))}
-          </dl>
-        </>
+        <dl className="grid gap-3 sm:grid-cols-2">
+          {rows.map(([label, value]) => (
+            <div key={label} className="rounded-sm border border-border bg-surface-2 p-3">
+              <dt className="text-sm text-text-dim">{label}</dt>
+              <dd className="text-lg">{value}</dd>
+            </div>
+          ))}
+        </dl>
       )}
     </Panel>
   );
