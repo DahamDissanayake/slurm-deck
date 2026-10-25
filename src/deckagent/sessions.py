@@ -6,18 +6,27 @@ checks the session itself on every request, so an account disabled a second
 ago, or a session past its idle or absolute limit, is refused even though web
 still holds the token. View as user is the acting_as_username column on the
 admin's own session row; web can't forge it with a header.
+
+The database alone never makes an admin. A row with role admin counts only
+when its username is also listed in the admins file (/etc/slurm-deck-web/admins,
+root-owned, one name per line), which only root on the login node can change.
+Otherwise the caller is a plain user, so an edited or forged row can't reach
+the admin verbs or sd-ops.
 """
 
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Mapping
+import os
+import stat
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 
 from deckagent.config import AgentConfig
 from deckagent.protocol import AgentError, Caller
+from sdcore.names import USERNAME_RE
 
 ROLES = frozenset({"user", "admin"})
 
@@ -81,13 +90,34 @@ def _to_row(v: tuple[Any, ...], acting_as: str | None) -> SessionRow:
                       created_at=v[5], last_seen_at=v[6], acting_as_username=acting_as)
 
 
+def read_admins(path: str, owner_uid: int = 0) -> frozenset[str]:
+    """The usernames in the admins file, read fresh on every call.
+
+    The file must be a regular file (not a symlink) owned by owner_uid (root)
+    and not writable by group or others; anything else counts as no admins.
+    Blank lines, # comments and lines that aren't valid usernames are skipped.
+    """
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except OSError:
+        return frozenset()
+    with os.fdopen(fd, encoding="utf-8", errors="replace") as f:
+        st = os.fstat(f.fileno())
+        if (not stat.S_ISREG(st.st_mode) or st.st_uid != owner_uid
+                or st.st_mode & (stat.S_IWGRP | stat.S_IWOTH)):
+            return frozenset()
+        names = (line.strip() for line in f.read(1024 * 1024).splitlines())
+        return frozenset(n for n in names if USERNAME_RE.fullmatch(n))
+
+
 def _no_session() -> AgentError:
     return AgentError("no_session", "Your session has ended. Sign in again.", 401)
 
 
 def resolve_caller(peer_uid: int, headers: Mapping[str, str], store: SessionStore,
                    config: AgentConfig, now: datetime | None = None,
-                   idle_minutes: int = 30, max_hours: int = 12) -> Caller:
+                   idle_minutes: int = 30, max_hours: int = 12,
+                   admins: Callable[[], frozenset[str]] | None = None) -> Caller:
     """The Caller for one request. headers have lower-cased names.
 
     The worker account is the worker, whatever header it sends. Anyone else
@@ -95,6 +125,9 @@ def resolve_caller(peer_uid: int, headers: Mapping[str, str], store: SessionStor
     idle_minutes of its last use and max_hours of its start. An admin viewing
     as a user becomes that user, with acting_admin set; the target must be an
     active, non-admin web account (never a shell account).
+
+    role admin also needs the username in the admins file (admins() reads it;
+    by default config.admins_file); without it the caller is a user.
     """
     if peer_uid == config.worker_uid:
         return Caller(None, "worker", None, True, None)
@@ -110,10 +143,16 @@ def resolve_caller(peer_uid: int, headers: Mapping[str, str], store: SessionStor
             or now - row.created_at > timedelta(hours=max_hours)):
         raise _no_session()
 
-    if row.acting_as_username is None:
-        return Caller(row.username, row.role, row.linux_kind, False, None)
+    role = row.role
+    if role == "admin":
+        listed = admins() if admins else read_admins(config.admins_file)
+        if row.username not in listed:
+            role = "user"
 
-    if row.role != "admin":
+    if row.acting_as_username is None:
+        return Caller(row.username, role, row.linux_kind, False, None)
+
+    if role != "admin":
         raise AgentError("not_allowed", "Only admins can view as another user.", 403)
     target = store.account(row.acting_as_username)
     if (target is None or target.status != "active" or target.role != "user"

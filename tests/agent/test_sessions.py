@@ -7,7 +7,7 @@ import pytest
 
 from deckagent.config import load_config
 from deckagent.protocol import AgentError, Caller
-from deckagent.sessions import SessionRow, hash_token, resolve_caller
+from deckagent.sessions import SessionRow, hash_token, read_admins, resolve_caller
 
 NOW = datetime(2026, 10, 24, 12, 0, tzinfo=UTC)
 CONFIG = load_config({"SD_WEB_UID": "1001", "SD_WORKER_UID": "1002"})
@@ -42,10 +42,13 @@ ACCOUNTS = {
 }
 
 
-def _resolve(row: SessionRow | None, *, peer=WEB, token="tok") -> Caller:
+ADMINS = frozenset({"dinuka", "kasun"})   # the root-owned admins file
+
+
+def _resolve(row: SessionRow | None, *, peer=WEB, token="tok", admins=ADMINS) -> Caller:
     store = FakeStore({"tok": row} if row else {}, ACCOUNTS)
     headers = {"x-sd-session": token} if token else {}
-    return resolve_caller(peer, headers, store, CONFIG, now=NOW)
+    return resolve_caller(peer, headers, store, CONFIG, now=NOW, admins=lambda: admins)
 
 
 def _status(row: SessionRow | None, **kw) -> int:
@@ -101,6 +104,83 @@ def test_act_as_resolves_target_and_records_admin():
 def test_admin_session_still_checks_its_own_expiry_when_acting_as():
     assert _status(_row("dinuka", role="admin", acting_as="amasha",
                         seen=timedelta(minutes=45))) == 401
+
+
+def test_listed_admin_row_resolves_to_admin():
+    assert _resolve(_row("dinuka", role="admin")) == Caller("dinuka", "admin", "hidden",
+                                                            False, None)
+
+
+def test_forged_admin_row_not_in_the_admins_file_is_downgraded_to_user():
+    # A DB row edited to role=admin gets nothing more than a user.
+    c = _resolve(_row("amasha", role="admin"))
+    assert (c.username, c.role) == ("amasha", "user")
+
+
+def test_admin_row_with_an_empty_admins_file_is_a_user():
+    assert _resolve(_row("dinuka", role="admin"), admins=frozenset()).role == "user"
+
+
+def test_forged_admin_row_cannot_view_as_another_user():
+    assert _status(_row("amasha", role="admin", acting_as="shelly")) == 403
+    assert _status(_row("amasha", role="admin", acting_as="dinuka")) == 403
+    assert _status(_row("amasha", role="admin", acting_as="gone")) == 403
+    with pytest.raises(AgentError) as e:
+        _resolve(_row("amasha", role="admin", acting_as="kasun"))
+    assert e.value.code == "not_allowed"
+
+
+def test_listing_alone_does_not_make_a_user_row_an_admin():
+    assert _resolve(_row("dinuka", role="user")).role == "user"
+
+
+def test_read_admins_takes_one_name_per_line(tmp_path):
+    f = tmp_path / "admins"
+    f.write_text("# web admins
+dinuka
+
+  kasun  
+Not A Name
+root;rm
+")
+    f.chmod(0o644)
+    assert read_admins(str(f), owner_uid=os.getuid()) == {"dinuka", "kasun"}
+
+
+def test_read_admins_missing_file_is_empty(tmp_path):
+    assert read_admins(str(tmp_path / "nope"), owner_uid=os.getuid()) == frozenset()
+
+
+def test_read_admins_refuses_a_file_owned_by_someone_else(tmp_path):
+    f = tmp_path / "admins"
+    f.write_text("dinuka
+")
+    f.chmod(0o644)
+    assert read_admins(str(f), owner_uid=os.getuid() + 1) == frozenset()
+
+
+@pytest.mark.parametrize("mode", [0o664, 0o646])
+def test_read_admins_refuses_a_group_or_world_writable_file(tmp_path, mode):
+    f = tmp_path / "admins"
+    f.write_text("dinuka
+")
+    f.chmod(mode)
+    assert read_admins(str(f), owner_uid=os.getuid()) == frozenset()
+
+
+def test_read_admins_refuses_a_symlink(tmp_path):
+    real = tmp_path / "real"
+    real.write_text("dinuka
+")
+    real.chmod(0o644)
+    (tmp_path / "admins").symlink_to(real)
+    assert read_admins(str(tmp_path / "admins"), owner_uid=os.getuid()) == frozenset()
+
+
+def test_admins_file_defaults_and_can_be_set():
+    assert CONFIG.admins_file == "/etc/slurm-deck-web/admins"
+    other = load_config({"SD_WEB_UID": "1", "SD_WORKER_UID": "2", "SD_ADMINS_FILE": "/x/a"})
+    assert other.admins_file == "/x/a"
 
 
 def test_hash_token_is_sha256_hex():

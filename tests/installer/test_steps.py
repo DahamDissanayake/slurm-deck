@@ -112,6 +112,34 @@ def test_secret_files_get_the_documented_modes(ctx):
     assert f"chmod 0600 {d}/sdprov_ed25519" in " ".join(ctx.login.cmds)   # the GPU-host key
 
 
+def test_the_first_admin_is_listed_in_the_admins_file_before_create_admin(ctx):
+    steps.run_all(ctx)
+    add = next(i for i, c in enumerate(ctx.login.cmds) if "/etc/slurm-deck-web/admins" in c)
+    create = next(i for i, c in enumerate(ctx.login.cmds) if "create-admin" in c)
+    assert add < create
+    assert ctx.login.cmds[add] == steps.admins_add_cmd("/etc/slurm-deck-web/admins", "ada")
+
+
+def test_admins_add_cmd_lists_a_name_once_and_keeps_the_others(tmp_path):
+    import getpass
+    f = tmp_path / "admins"
+    f.write_text("kasun
+")
+    f.chmod(0o664)
+    owner = f"{getpass.getuser()}:"
+    for _ in range(2):
+        subprocess.run(["sh", "-c", steps.admins_add_cmd(str(f), "ada", owner)], check=True)
+    assert f.read_text() == "kasun
+ada
+"
+    assert f.stat().st_mode & 0o777 == 0o644
+    (tmp_path / "new").unlink(missing_ok=True)
+    subprocess.run(["sh", "-c", steps.admins_add_cmd(str(tmp_path / "new"), "ada", owner)],
+                   check=True)
+    assert (tmp_path / "new").read_text() == "ada
+"
+
+
 def test_network_waits_for_a_hand_made_forward_and_installs_the_scripts_on_the_gpu_host(ctx):
     assert steps.network(ctx) is True
     assert any("/usr/local/lib/slurm-deck/sd-web-forward.sh --apply" in c for c in ctx.gpu.cmds)
