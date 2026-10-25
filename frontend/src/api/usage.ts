@@ -1,7 +1,6 @@
 import { apiFetch } from "./client";
 
-export type Days = 7 | 30 | 90;
-export const DAYS: Days[] = [7, 30, 90];
+export const DAYS = [7, 30, 90];
 
 export type Totals = { gpu_hours: number; cpu_hours: number; jobs_by_state: Record<string, number> };
 export type ClusterUsage = { total: Totals; users: (Totals & { user: string })[] };

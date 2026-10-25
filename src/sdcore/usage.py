@@ -9,7 +9,6 @@ from dataclasses import dataclass, field
 
 from sdcore.slurmparse import _tres_value
 
-# `sacct -X --parsable2 --noheader --format=SACCT_USAGE_FORMAT`
 SACCT_USAGE_FORMAT = "User,State,ElapsedRaw,AllocTRES"
 
 

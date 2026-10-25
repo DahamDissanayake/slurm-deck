@@ -27,7 +27,6 @@ _disk_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _disk_lock = threading.Lock()
 
 
-# Seams for tests: who the work runs as.
 def _identity(caller: Caller, config: AgentConfig) -> PosixIdentity:
     return identity_for_user(caller, config)
 

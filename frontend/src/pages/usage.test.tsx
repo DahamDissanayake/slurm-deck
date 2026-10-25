@@ -12,8 +12,7 @@ afterEach(() => vi.unstubAllGlobals());
 const NODE = { state: "MIXED", cpu_util: 40, cpu_total: 32, mem_used_mb: 20480, mem_total_mb: 131072,
                gpu_util: 55, gpu_mem_used_mb: 8192, gpu_mem_total_mb: 24576, gpu_temp: 61,
                gpu_power_w: 180, shard_total: 8, shard_alloc: 3, live_stats: true };
-const status = (node: object | null) => ({ body: { node, pods_total: 8, pods_used: 3,
-                                                    partition_max_s: 86400 } });
+const status = (node: object | null) => ({ body: { node, pods_total: 8, pods_used: 3 } });
 const queue = { body: { jobs: [{ state: "RUNNING" }, { state: "RUNNING" }, { state: "PENDING" }] } };
 
 function check(label: string) {
