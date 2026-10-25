@@ -157,3 +157,18 @@ def test_janitor_sweeps_old_parts(fsagent):
     os.utime(part, (old, old))
     janitor.sweep(a.config)
     assert not part.exists() and fresh.exists()
+
+
+def test_chunk_for_a_disabled_account_is_refused(fsagent):
+    from deckagent.verbs import files
+
+    a = fsagent
+    client = AgentClient(a.path)
+    grant = _begin(a)
+    assert client.upload_chunk(UPLOAD, 0, [b"abc"], length=3, grant=grant) == 3
+    a.store.disabled.add("amasha")
+    files.ACTIVE_ACCOUNTS.clear()               # skip the 60 s cache
+    with pytest.raises(AgentCallError) as e:
+        client.upload_chunk(UPLOAD, 3, [b"de"], length=2, grant=grant)
+    assert (e.value.code, e.value.status) == ("account_inactive", 403)
+    assert (a.dir / "shared/users/amasha/.sd-uploads" / f"{UPLOAD}.part").read_bytes() == b"abc"

@@ -213,6 +213,10 @@ def upload_regrant(ctx: RequestContext, payload: dict[str, Any]) -> dict[str, An
     return _grant(ctx, str(payload.get("upload_id", "")), ident, who)
 
 
+# One status lookup per username a minute for fs.write_chunk.
+ACTIVE_ACCOUNTS = grants.ActiveAccounts()
+
+
 @verb("fs.write_chunk", allow=PEOPLE, body="raw", session=False)
 def write_chunk(ctx: RequestContext, body: IO[bytes]) -> dict[str, Any]:
     h = ctx.headers
@@ -220,6 +224,7 @@ def write_chunk(ctx: RequestContext, body: IO[bytes]) -> dict[str, Any]:
     username = grants.verify(grants.load_key(ctx.config.grant_key_file), h.get("x-sd-grant", ""),
                              upload_id=upload_id, now=int(time.time()))
     ctx.audit.update(actor=username, target=upload_id)
+    ACTIVE_ACCOUNTS.check(ctx.store, username)
     try:
         offset = int(h.get("x-sd-offset", ""))
     except ValueError:
