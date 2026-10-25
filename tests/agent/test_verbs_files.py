@@ -1,6 +1,7 @@
 """fs.* verbs: fsops as the caller, admin access through sd-ops, uploads with
 grants, the free-space rule, streaming, and the staging janitor."""
 
+import json
 import os
 import pwd
 import subprocess
@@ -96,6 +97,22 @@ def test_upload_chunks_finalize_and_offsets(fsagent):
                                         "filename": "data.bin", "replace": False})
     assert (a.dir / "shared/users/amasha/data.bin").read_bytes() == b"abcde"
     assert out["path"].endswith("users/amasha/data.bin")
+
+
+def test_upload_chunk_audit_names_grant_user_and_upload(fsagent):
+    a = fsagent
+    client = AgentClient(a.path)
+    grant = _begin(a)
+    client.upload_chunk(UPLOAD, 0, [b"abc"], length=3, grant=grant)
+    with pytest.raises(AgentCallError):
+        client.upload_chunk(UPLOAD, 0, [b"abc"], length=3, grant=grant)
+    with pytest.raises(AgentCallError):
+        client.upload_chunk(UPLOAD, 3, [b"x"], length=1, grant="not-a-grant")
+    lines = [json.loads(x) for x in (a.dir / "audit").read_text().splitlines()]
+    got = [(x["actor"], x["target"], x["result"]) for x in lines
+           if x["verb"] == "fs.write_chunk"]
+    assert got == [("amasha", UPLOAD, "ok"), ("amasha", UPLOAD, "offset_mismatch"),
+                   (None, "", "bad_grant")]
 
 
 def test_grant_for_one_user_cannot_write_another_upload(fsagent):

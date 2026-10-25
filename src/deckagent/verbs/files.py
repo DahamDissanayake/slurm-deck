@@ -219,6 +219,7 @@ def write_chunk(ctx: RequestContext, body: IO[bytes]) -> dict[str, Any]:
     upload_id = h.get("x-sd-upload", "")
     username = grants.verify(grants.load_key(ctx.config.grant_key_file), h.get("x-sd-grant", ""),
                              upload_id=upload_id, now=int(time.time()))
+    ctx.audit.update(actor=username, target=upload_id)
     try:
         offset = int(h.get("x-sd-offset", ""))
     except ValueError:

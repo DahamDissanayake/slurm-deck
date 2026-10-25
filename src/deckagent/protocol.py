@@ -49,6 +49,10 @@ class RequestContext:
     config: AgentConfig
     headers: Mapping[str, str]   # lower-cased names
     store: Any = None            # the session store (also reads agent_settings)
+    # A session=False handler has no session caller, so once it has authorised
+    # the request (an upload grant) it names who it acted for here: "actor"
+    # and "target". The server writes them into the audit line.
+    audit: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
