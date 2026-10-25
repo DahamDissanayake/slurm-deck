@@ -4,6 +4,7 @@
 import socket
 import threading
 import time
+from html import unescape
 
 import pytest
 import uvicorn
@@ -11,7 +12,7 @@ from accounts_helpers import _account, _client
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy import select
-from starlette.testclient import WebSocketDenialResponse
+from starlette.websockets import WebSocketDisconnect as Disconnect
 
 from sdweb.agent import AgentCallError
 from sdweb.models import AuditEvent, Job
@@ -125,7 +126,7 @@ def test_owner_proxied_with_token_and_without_our_cookie(proxy):
 def test_other_user_403(proxy):
     _, _, c, up = proxy
     r = c["kasun"].get("/notebook/42/api/status")
-    assert r.status_code == 403 and "This session belongs to someone else." in r.text
+    assert r.status_code == 403 and "This session belongs to someone else." in unescape(r.text)
     assert up.last_headers == {}
 
 
@@ -161,7 +162,7 @@ def test_ended_job_shows_ended_page(proxy):
     _, agent, c, _ = proxy
     agent.state = "COMPLETED"
     r = c["amasha"].get("/notebook/42/")
-    assert "This session has ended." in r.text and "Back to your jobs" in r.text
+    assert "This session has ended." in unescape(r.text) and "Back to your jobs" in r.text
 
 
 def test_upstream_down_shows_not_responding(proxy):
@@ -169,7 +170,8 @@ def test_upstream_down_shows_not_responding(proxy):
     up.stop()
     r = c["amasha"].get("/notebook/42/api/status")
     assert r.status_code == 502
-    assert "The session isn't responding. It may still be starting, or it has stopped." in r.text
+    msg = "The session isn\'t responding. It may still be starting, or it has stopped."
+    assert msg in unescape(r.text)
     assert 'href="/jobs/42"' in r.text
 
 
@@ -211,7 +213,7 @@ def test_websocket_roundtrip_and_no_leak(proxy):
 
 def test_websocket_for_another_user_is_refused(proxy):
     _, _, c, up = proxy
-    with pytest.raises(WebSocketDenialResponse) as e:
+    with pytest.raises(Disconnect) as e:   # closed before accept: a real server answers 403
         with _ws(c["kasun"]):
             pass
-    assert e.value.status_code == 403 and up.opened == 0
+    assert e.value.code == 1008 and up.opened == 0
