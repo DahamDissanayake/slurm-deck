@@ -35,13 +35,15 @@ out = {"envs": [[d, n, os.path.exists(os.path.join(d, n, marker))]
 print(json.dumps(out))
 """
 
-# Run with the env's own python: the script's top-level imports that this
-# env can't find. Standard library and the script's own folder don't count.
+# Run with deck-agent's own python (-I -S), as the caller: the script's
+# top-level imports that the env can't provide. The env is only read, never
+# run: its bin/python and its .pth files are the user's code (SLURM-57).
+# Standard library and the script's own folder don't count as missing.
 _CHECK = r"""
-import ast, importlib.util, json, sys
-path = sys.argv[1]
-with open(path, encoding="utf-8", errors="replace") as f:
-    tree = ast.parse(f.read(), path)
+import ast, json, os, re, sys
+script, env = sys.argv[1], sys.argv[2]
+with open(script, encoding="utf-8", errors="replace") as f:
+    tree = ast.parse(f.read(), script)
 names = set()
 for node in ast.walk(tree):
     if isinstance(node, ast.Import):
@@ -49,9 +51,59 @@ for node in ast.walk(tree):
     elif isinstance(node, ast.ImportFrom) and not node.level and node.module:
         names.add(node.module.split(".")[0])
 std = set(getattr(sys, "stdlib_module_names", ())) | set(sys.builtin_module_names)
-sys.path.insert(0, path.rsplit("/", 1)[0] or "/")
-print(json.dumps(sorted(n for n in names - std if importlib.util.find_spec(n) is None)))
+have = set()
+NAME = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)(\..*)?")
+
+def entries(d):
+    try:
+        return os.listdir(d)
+    except OSError:
+        return []
+
+def scan(d):
+    for n in entries(d):
+        p = os.path.join(d, n)
+        if n.endswith((".dist-info", ".egg-info")):
+            try:
+                with open(os.path.join(p, "top_level.txt"), encoding="utf-8",
+                          errors="replace") as t:
+                    have.update(x.strip() for x in t if x.strip())
+            except OSError:
+                pass
+            continue
+        m = NAME.fullmatch(n)
+        if not m:
+            continue
+        ext = m.group(2) or ""
+        if (not ext and os.path.isdir(p)) or ext in (".py", ".pyc") or ext.endswith(".so"):
+            have.add(m.group(1))
+
+lib, sites = os.path.join(env, "lib"), []
+for py in entries(lib):
+    if re.fullmatch(r"python3\.\d+", py):
+        scan(os.path.join(lib, py))                  # a conda env's own standard library
+        scan(os.path.join(lib, py, "lib-dynload"))
+        if os.path.isdir(os.path.join(lib, py, "site-packages")):
+            sites.append(os.path.join(lib, py, "site-packages"))
+if not sites:
+    sys.exit(3)
+for sp in sites:
+    scan(sp)
+    for n in entries(sp):   # a .pth's folder lines (editable installs); never its code
+        if not n.endswith(".pth"):
+            continue
+        try:
+            with open(os.path.join(sp, n), encoding="utf-8", errors="replace") as f:
+                lines = [x.strip() for x in f]
+        except OSError:
+            continue
+        for x in lines:
+            if x and not x.startswith(("#", "import ", "import\t")):
+                scan(x if os.path.isabs(x) else os.path.join(sp, x))
+scan(os.path.dirname(script) or "/")                 # the script's own folder
+print(json.dumps(sorted(names - std - have)))
 """
+NO_PACKAGES = 3   # _CHECK's exit code for an env with no site-packages
 
 
 # Seams for tests: who the work runs as.
@@ -110,10 +162,16 @@ def check_imports(ctx: RequestContext, payload: dict[str, Any]) -> dict[str, Any
     reads = [*user_browse_roots(cfg.nfs_root, user), user_job_root(cfg.nfs_root, user)]
     if not _under(env_path, list(_env_roots(cfg, user))) or not _under(script, reads):
         raise _refuse()
-    python = posixpath.normpath(env_path) + "/bin/python"
-    missing = _json(_identity(ctx.caller, cfg), [python, "-I", "-c", _CHECK,
-                                                 posixpath.normpath(script)], CHECK_S)
-    return {"missing": missing}
+    argv = [sys.executable, "-I", "-S", "-c", _CHECK, posixpath.normpath(script),
+            posixpath.normpath(env_path)]
+    r = run_as(_identity(ctx.caller, cfg), argv, timeout=CHECK_S)
+    if r.returncode == NO_PACKAGES:
+        raise AgentError("env_not_python", "That environment has no Python packages folder.",
+                         400)
+    if r.returncode != 0:
+        raise AgentError("env_check_failed",
+                         r.stderr.decode(errors="replace").strip()[-300:] or "It didn't run.", 400)
+    return {"missing": json.loads(r.stdout)}
 
 
 @verb("env.delete", allow=PEOPLE)
