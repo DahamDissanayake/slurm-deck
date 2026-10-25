@@ -28,11 +28,24 @@ QOS_TRES = {"max_pods_per_user": "gres/shard", "max_gpus_per_user": "gres/gpu"}
 AREAS = ("datasets", "models", "envs", "data", "images", "scripts")
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
 LOGIN_UNITS = ("slurmctld", "slurmdbd", "mariadb", "munge", "deck-agent", "docker")
-EXISTS = 17   # the publish script's exit code for "that name is taken"
-# $1 source, $2 destination, $3 "1" to replace. Copies beside the target first,
-# so a failed copy never leaves a half-replaced asset.
-PUBLISH = ('set -e; if [ -e "$2" ] && [ "$3" != 1 ]; then exit 17; fi; rm -rf -- "$2.new"; '
-           'cp -a --reflink=auto -- "$1" "$2.new"; rm -rf -- "$2"; mv -- "$2.new" "$2"')
+EXISTS = 17       # the publish script's exit code for "that name is taken"
+BAD_SOURCE = 18   # ... for "the source is a link, or leaves the user's folder"
+# $1 source, $2 destination, $3 "1" to replace, $4 <nfs_root>/users. Run as
+# sd-ops, which can read every user's folder, so the source is resolved first:
+# it must be exactly the path asked for (no symlink anywhere below users/, the
+# share root itself may be one) and inside one user's folder. The copy is made
+# from the resolved path and checked again afterwards, so a link swapped in
+# while copying is caught. Copies beside the target first, so a failed copy
+# never leaves a half-replaced asset.
+PUBLISH = ('set -e; root=$(realpath -e -- "$4") || exit 18; '
+           'real=$(realpath -e -- "$1") || exit 18; '
+           'case "$1" in "$4"/?*) ;; *) exit 18;; esac; '
+           '[ "$real" = "$root/${1#"$4"/}" ] || exit 18; '
+           'case "$real" in "$root"/?*) ;; *) exit 18;; esac; '
+           'if [ -e "$2" ] && [ "$3" != 1 ]; then exit 17; fi; rm -rf -- "$2.new"; '
+           'cp -a --reflink=auto -- "$real" "$2.new"; '
+           'if [ "$(realpath -e -- "$1")" != "$real" ]; then rm -rf -- "$2.new"; exit 18; fi; '
+           'rm -rf -- "$2"; mv -- "$2.new" "$2"')
 
 
 def _ops_identity(ctx: RequestContext) -> PosixIdentity:   # a seam for tests
@@ -227,13 +240,18 @@ def _shared(ctx: RequestContext, area: Any, name: Any) -> str:
 def publish_shared(ctx: RequestContext, payload: dict[str, Any]) -> dict[str, Any]:
     _admin(ctx)
     dest = _shared(ctx, payload.get("area"), payload.get("name"))
+    users = ctx.config.nfs_root.rstrip("/") + "/users"
     src = posixpath.normpath(str(payload.get("src", "")))
-    if not src.startswith(ctx.config.nfs_root.rstrip("/") + "/users/"):
+    if not src.startswith(users + "/"):
         raise _bad("bad_source", "Only something from a user's own area can be published.")
     r = run_as(_ops_identity(ctx), ["sh", "-c", PUBLISH, "sh", src, dest,
-                                    "1" if payload.get("replace") is True else "0"], timeout=3600)
+                                    "1" if payload.get("replace") is True else "0", users],
+               timeout=3600)
     if r.returncode == EXISTS:
         raise AgentError("exists", "A file with that name already exists there.", 409)
+    if r.returncode == BAD_SOURCE:
+        raise _bad("bad_source", "That source is missing, is a link, or goes through a link "
+                   "out of the user's folder.")
     if r.returncode != 0:
         raise AgentError("publish_failed", r.stderr.decode(errors="replace").strip()[-300:]
                          or "The copy failed.", 502)

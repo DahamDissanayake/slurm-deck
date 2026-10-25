@@ -139,6 +139,45 @@ def test_publish_rejects_a_source_outside_user_areas_and_bad_names(admin):
         assert status(admin, "admin.publish_shared", args).status == 422
 
 
+def test_publish_refuses_a_symlinked_folder_on_the_way(admin):
+    """users/amasha/link -> users/hassan: publishing amasha/link/secret would copy
+    hassan's data into a shared area (SLURM-49 finding 3)."""
+    users = admin.dir / "shared/users"
+    (users / "hassan/private").mkdir(parents=True)
+    (users / "hassan/private/notes.txt").write_text("hassan's")
+    (users / "amasha").mkdir(parents=True)
+    (users / "amasha/link").symlink_to(users / "hassan")
+    (admin.dir / "shared/datasets").mkdir()
+    args = {"src": str(users / "amasha/link/private"), "area": "datasets", "name": "p"}
+    e = status(admin, "admin.publish_shared", args)
+    assert e.status == 422 and e.code == "bad_source"
+    assert not (admin.dir / "shared/datasets/p").exists()
+    assert not (admin.dir / "shared/datasets/p.new").exists()
+
+
+def test_publish_refuses_a_source_that_is_itself_a_link(admin):
+    users = admin.dir / "shared/users"
+    (users / "hassan").mkdir(parents=True)
+    (users / "hassan/data.csv").write_text("x")
+    (users / "amasha").mkdir(parents=True)
+    (users / "amasha/data.csv").symlink_to(users / "hassan/data.csv")
+    (users / "amasha/etc").symlink_to("/etc")
+    (admin.dir / "shared/datasets").mkdir()
+    for src in ("amasha/data.csv", "amasha/etc"):
+        args = {"src": str(users / src), "area": "datasets", "name": "d"}
+        assert status(admin, "admin.publish_shared", args).code == "bad_source"
+    assert not (admin.dir / "shared/datasets/d").exists()
+
+
+def test_publish_refuses_the_users_folder_itself_or_a_missing_source(admin):
+    users = admin.dir / "shared/users"
+    users.mkdir(parents=True)
+    (admin.dir / "shared/datasets").mkdir()
+    for src in (str(users) + "/", str(users / "amasha/nothing-here")):
+        args = {"src": src, "area": "datasets", "name": "d"}
+        assert status(admin, "admin.publish_shared", args).status == 422
+
+
 def test_service_status_reports_both_nodes(admin):
     r = call(admin, "admin.service_status")
     assert r["login"]["mariadb"] == "failed" and r["login"]["munge"] == "active"
