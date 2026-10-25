@@ -11,6 +11,15 @@ users. It covers `origin/dev` at `a3ef794`:
 It was checked against spec §4.3 (deck-agent), §5.3 (authentication), §6.4
 (sessions) and §10 (security changes).
 
+A follow-up pass (SLURM-71) closed the gaps the first pass left:
+- the two verb files it had only skimmed;
+- the §10 hardening scripts in `deploy/cluster/harden/`;
+- read-only checks on the live cluster on 2026-10-25, recording metadata only
+  (modes, ACLs, group members, services, Slurm version), never file contents;
+- proof tests for the two high findings.
+
+That pass added findings 13 to 15.
+
 Each finding has an issue task. The platform should not go to real users while
 a high-severity finding is still open.
 
@@ -28,6 +37,9 @@ a high-severity finding is still open.
 | 10 | Low | deck-agent systemd unit is lightly hardened | SLURM-65 |
 | 11 | Info | Postgres is reachable on the login node's loopback | SLURM-66 |
 | 12 | Info | `fs.extract` has no cap on total size | SLURM-67 |
+| 13 | Medium | No install or cutover step runs the §10 hardening scripts | SLURM-68 |
+| 14 | Medium | `shared-areas.sh` misses folders and default ACLs | SLURM-69 |
+| 15 | Medium | Named-person ACLs on every user folder and shared area | SLURM-70 |
 
 ## Findings
 
@@ -40,6 +52,12 @@ that page's JavaScript can read the CSRF token from `GET /api/auth/me` and call
 any admin API as the admin. Upstream `Set-Cookie` (which can overwrite
 `sd_session`), `Service-Worker-Allowed` and `Clear-Site-Data` headers also pass
 through unfiltered.
+
+**Proof:** `tests/web/test_proxy.py::test_job_cannot_set_platform_cookie_or_service_worker_scope`.
+The test job returns `Set-Cookie: sd_session=attacker-token`, and that header
+reaches the admin's browser. The test is marked strict xfail, so it passes CI
+while the bug exists and fails once SLURM-56 fixes it, which forces the marker
+to be removed.
 
 **Fix:** serve sessions from a separate origin. Until then, drop those headers.
 
@@ -55,6 +73,10 @@ can run any code the user wants:
 A process that daemonizes outlives the 20 s timeout. This breaks the §10 rule
 that web users have no login-node access.
 
+**Proof:** `tests/agent/test_verbs_envs.py::test_check_imports_never_runs_the_users_interpreter`.
+A user env whose `bin/python` creates a marker file is passed to the verb, and
+the marker appears. The test is marked strict xfail, the same way as finding 1.
+
 **Fix:** never run the env's interpreter. Read its site-packages as files instead.
 
 ### 3. `admin.publish_shared` checks the source path as text only (Medium, SLURM-58)
@@ -63,6 +85,10 @@ that web users have no login-node access.
 `realpath`. If a folder along a user's path is a symlink to another user's
 folder, `cp -a` running as sd-ops copies that user's data into a shared area
 everyone can read.
+
+**Live check:** every `/shared/users/<u>` folder grants `group:gpuadmins:rwx`,
+and sd-ops does its file work through that group. So sd-ops can read every
+user's folder, which is what makes this attack possible.
 
 **Fix:** resolve the path as sd-ops and require the result to stay under
 `users/<owner>/`.
@@ -94,6 +120,10 @@ key. For example, a WorkDir containing ` UserId=alice(…)` replaces the real
 owner. This was confirmed with the module's own regex. The impact is limited to
 the user's own jobs.
 
+**Live check:** the cluster runs Slurm 25.11.2, and `scontrol show job --json`
+works there. No job was running, so the real field order of `--oneliner`
+couldn't be confirmed live.
+
 **Fix:** read job fields from structured output (`--json` or fixed formats).
 
 ### 7. Upload chunks have no actor in the audit log (Low, SLURM-62)
@@ -120,10 +150,75 @@ The unit has no `CapabilityBoundingSet`, `ProtectSystem=strict`,
 
 `deploy/compose.yaml:45` publishes Postgres on `127.0.0.1:5432`. Shell users,
 who still have login-node accounts, can reach it. A password is still required.
+The platform isn't installed yet, so this couldn't be checked live. The login
+node has 20 accounts with a UID of 1000 or more, so the exposure would be real.
 
 ### 12. `fs.extract` has no size cap (Info, SLURM-67)
 
 A zip bomb can fill `/shared` for everyone.
+
+### 13. No install or cutover step runs the §10 hardening scripts (Medium, SLURM-68)
+
+`deploy/cluster/harden/` holds the scripts for §10 items 2, 3 and 8:
+`remove-docker-group.sh`, `shared-areas.sh` and `service-accounts.sh`. But no
+installer step, `cutover.sh` or runbook runs them. Live on 2026-10-25, none of
+§10 had been applied:
+
+- the `docker` group (root-equivalent) has 16 to 17 members on each node;
+- a normal user (`tuser`) can write `/shared/envs`;
+- `sd-ops` and `sd-stats` don't exist;
+- `slurm-deck-stats` runs as `root-daham`.
+
+**Fix:** make the installer or cutover run each script, `--check` then
+`--apply`, and refuse to finish until it has.
+
+### 14. `shared-areas.sh` misses folders and default ACLs (Medium, SLURM-69)
+
+The script resets owners, modes and access ACLs, but leaves
+`default:other::rwx` on `envs`, `models`, `data` and `templates`. Files created
+there later are world-writable.
+
+It also skips four folders:
+
+| Folder | Why it matters |
+|---|---|
+| `/shared/templates` | Every `gpuusers` member can write it today, and §10.3 names it |
+| `/shared/miniforge3` | Every job script sources its `conda.sh` (`sdcore/sbatch.py`). Today only `root-daham`'s group can write it, but nothing keeps it that way |
+| `/shared/training-scripts` | Not managed at all |
+| `/shared/tmp` | Not managed at all |
+
+**Fix:** add those folders, reset the default ACLs, and report both in `--check`.
+
+### 15. Named-person ACLs on every user folder and shared area (Medium, SLURM-70)
+
+Every `/shared/users/<u>` folder and every shared area carries
+`user:iit:rwx` and `user:daham:rwx`, as both access and default entries.
+`daham` is in `gpuusers`, not `gpuadmins`. If `daham` becomes a web account,
+deck-agent acting as `daham` can read and write every user's folder. That
+removes the per-user kernel boundary §4.3 relies on, and it goes against §10.8.
+
+**Fix:** remove named-user ACL entries, keeping each folder owner's own, and
+give admin access only through `gpuadmins` and sd-ops. Confirm with the Head
+first.
+
+## How the review was done
+
+- **Code:** the files in scope were read in full and traced by hand against
+  the spec sections above. The original pass only skimmed
+  `verbs/cluster.py` and `verbs/usage.py`; the follow-up read them in full.
+- **Tests:** the attack types the task lists are also covered by existing
+  tests, which pass in `serenedge ci`:
+  - malformed requests and slow clients: `tests/agent/test_server.py`;
+  - path traversal: `tests/agent/test_fsops.py` and `test_verbs_files.py`.
+- **Proof tests:** findings 1 and 2 each have one, and finding 6 was
+  reproduced with the module's own regex.
+- **Live cluster:** read-only metadata checks on the GPU host and the login
+  node on 2026-10-25. Nothing was changed and no file contents were read.
+
+**Limits:** no finding was exploited on the live system, the platform wasn't
+installed so its runtime couldn't be checked, and there was no fuzzing or load
+testing. The front-end, the worker and API routes outside proxy and auth were
+out of scope.
 
 ## Checked with no finding
 
@@ -140,6 +235,20 @@ A zip bomb can fill `/shared` for everyone.
   admin who is viewing as a user is refused admin verbs, `as_ops` and
   `as_admin`.
 - **Worker role:** limited to the cluster-wide read-only verbs.
+- **`verbs/cluster.py` and `verbs/usage.py`:** queue job names are shown only
+  to the job's owner and admins, cluster-wide usage is admin-only (and refused
+  while viewing as a user), and `du` runs as sd-ops.
+- **GPU stats file:** deck-agent reads `/shared/.gpu_stats.json` as root.
+  Checked live: users can't replace it, because `/shared` itself is writable
+  only by its owner and `gpuadmins`.
+- **§10 items 1, 5, 6 and 7:** these are in place in code:
+  - `AllowGroups` and the ForceCommand removal in `cutover.sh`;
+  - the session-port firewall in `sd-session-ports.nft`;
+  - UIDs from the `web_uid_seq` Postgres sequence, which never wraps around
+    (`NO CYCLE`; used by `accounts/service.py` and `cli.py`);
+  - strict username checks in `account.delete` and the helper.
+
+  Neither the cutover nor the firewall has been applied live yet.
 - **Helper parsing:** no shell, an exact argument count per command, sudoers
   that allows no arguments, and an SSH key restricted to the forced command.
 - **Upload grants:** the HMAC is checked with `compare_digest`, so grants can't

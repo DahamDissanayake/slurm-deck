@@ -63,6 +63,23 @@ def test_check_imports_reports_missing(envs):
     assert ("amasha", "python") in envs.ran
 
 
+@pytest.mark.xfail(strict=True, reason="SLURM-57: env.check_imports runs the env's own "
+                   "bin/python, which the user controls, on the login node")
+def test_check_imports_never_runs_the_users_interpreter(envs):
+    """A user's env is the user's files: its bin/python must not be executed
+    outside a Slurm job (SLURM-49 finding 2)."""
+    env = envs.dir / "shared/users/amasha/envs/evil"
+    (env / "bin").mkdir(parents=True)
+    marker = envs.dir / "ran-on-login-node"
+    python = env / "bin/python"
+    python.write_text(f'#!/bin/sh\ntouch "{marker}"\nexec {sys.executable} "$@"\n')
+    python.chmod(0o755)
+    script = envs.dir / "shared/users/amasha/train.py"
+    script.write_text("import os\n")
+    envs.call("env.check_imports", {"env_path": str(env), "script_path": str(script)})
+    assert not marker.exists()
+
+
 def test_check_imports_refuses_paths_outside_the_jail(envs):
     e = _err(envs, "env.check_imports", {"env_path": "/usr", "script_path": "/etc/passwd"})
     assert e.status == 403
