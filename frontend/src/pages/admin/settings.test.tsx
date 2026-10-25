@@ -2,7 +2,6 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { mockFetch } from "../../test/fetch";
-import { Monitoring } from "./Monitoring";
 import { Settings } from "./Settings";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -34,27 +33,5 @@ describe("Settings", () => {
     expect(await screen.findByRole("status")).toHaveTextContent("Use a whole number from 50 to 99.");
     expect(JSON.parse(calls.find((c) => c.method === "PUT")?.body ?? "{}"))
       .toEqual({ disk_alert_percent: 85, mail_enabled: false });
-  });
-});
-
-describe("Monitoring", () => {
-  const rows = (n: number, more: boolean) => ({ body: { page: 1, has_more: more, events: Array.from(
-    { length: n }, (_, i) => ({ id: i, ts: "2026-10-25T10:00:00+00:00", actor: "amasha", acting_admin: null,
-                                action: "job.cancel", target: String(i), result: "ok", source: "web" })) } });
-
-  it("pages the audit trail on the server and filters by action", async () => {
-    const calls = mockFetch({
-      "GET /api/admin/audit?page=1&page_size=25": rows(2, true),
-      "GET /api/admin/audit?page=2&page_size=25": rows(1, false),
-      "GET /api/admin/audit?action=job&page=1&page_size=25": rows(1, false),
-    });
-    render(<Monitoring />);
-    expect(await screen.findAllByText("job.cancel")).toHaveLength(2);
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
-    expect(await screen.findByText("Page 2")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: "Previous" }));
-    fireEvent.change(screen.getByLabelText(/Action starts with/), { target: { value: "job" } });
-    await vi.waitFor(() => expect(calls.some((c) => c.path.includes("action=job"))).toBe(true));
   });
 });

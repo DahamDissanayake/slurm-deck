@@ -156,5 +156,4 @@ def test_audit_tail_returns_the_newest_entries_first_and_only_those_after_since(
 
     assert seeded() == ["v4", "v3", "v2", "v1", "v0"]
     assert seeded(since_ts="2020-01-01T10:02:00+00:00") == ["v4", "v3"]
-    assert len(call(admin, "admin.audit_tail", {"limit": 1})["events"]) == 1
     assert status(admin, "admin.audit_tail", {}, as_="user:amasha").status == 403

@@ -14,9 +14,8 @@ export type MailRow = { id: number; to: string; subject: string; status: string;
                         error: string | null };
 type Paged<K extends string, T> = { page: number; has_more: boolean } & { [P in K]: T[] };
 
-const qs = (params: Record<string, string | number>) =>
-  Object.entries(params).filter(([, v]) => v !== "").map(([k, v]) =>
-    `${k}=${encodeURIComponent(v)}`).join("&");
+const qs = (params: Record<string, string | number>) => new URLSearchParams(
+  Object.entries(params).filter(([, v]) => v !== "").map(([k, v]) => [k, String(v)])).toString();
 
 export const adminOps = {
   settings: () => apiFetch<SettingsReply>("/api/admin/settings"),

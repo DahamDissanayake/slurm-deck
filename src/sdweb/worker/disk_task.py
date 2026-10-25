@@ -20,8 +20,7 @@ templates.register(
     "disk_alert",
     lambda c: f"The shared disk on {c['cluster']} is {c['percent']}% full",
     lambda c: [f"The shared storage on {c['cluster']} is {c['percent']}% full "
-               f"({c['free']} free of {c['total']}).",
-               "New uploads and job output will start failing when it fills. "
+               f"({c['free']} free of {c['total']}). Uploads and job output fail when it fills.",
                "You'll get this reminder at most once a day.",
                templates.Button("See disk use by user", c["link"])])
 
