@@ -2,18 +2,20 @@ import { Link, match, useLocation } from "../../app/navigation";
 import { AppAccess } from "./AppAccess";
 import { Cluster } from "./Cluster";
 import { JobsAdmin } from "./JobsAdmin";
+import { Monitoring } from "./Monitoring";
 import { NewUser } from "./NewUser";
 import { Requests } from "./Requests";
+import { Settings } from "./Settings";
 import { SharedAssets } from "./SharedAssets";
 import { UserDetail } from "./UserDetail";
 import { UsageAdmin } from "./UsageAdmin";
 import { Users } from "./Users";
 
-// Later phases add Settings and Monitoring.
 const TABS = [["/admin/requests", "Requests"], ["/admin/users", "Users"],
               ["/admin/access", "Application access"], ["/admin/usage", "Usage"],
               ["/admin/jobs", "Jobs"], ["/admin/cluster", "Cluster"],
-              ["/admin/shared", "Shared assets"]] as const;
+              ["/admin/shared", "Shared assets"], ["/admin/settings", "Settings"],
+              ["/admin/monitoring", "Monitoring"]] as const;
 
 function Page({ path }: { path: string }) {
   if (match("/admin/users/new", path)) return <NewUser />;
@@ -25,6 +27,8 @@ function Page({ path }: { path: string }) {
   if (match("/admin/jobs", path)) return <JobsAdmin />;
   if (match("/admin/cluster", path)) return <Cluster />;
   if (match("/admin/shared", path)) return <SharedAssets />;
+  if (match("/admin/settings", path)) return <Settings />;
+  if (match("/admin/monitoring", path)) return <Monitoring />;
   return <Requests />;
 }
 

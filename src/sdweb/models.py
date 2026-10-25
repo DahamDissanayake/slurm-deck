@@ -132,6 +132,9 @@ class Setting(Base):
 
 class AuditEvent(Base):
     __tablename__ = "audit_events"
+    __table_args__ = (Index("ix_audit_events_ts", "ts"),
+                      Index("ix_audit_events_actor_ts", "actor_id", "ts"),
+                      Index("ix_audit_events_action_ts", "action", "ts"))
     id: Mapped[int] = mapped_column(primary_key=True)
     ts: Mapped[datetime] = _now()
     actor_id: Mapped[int | None] = mapped_column(ForeignKey("accounts.id"))

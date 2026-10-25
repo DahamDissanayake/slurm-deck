@@ -15,13 +15,14 @@ from sdweb import db
 from sdweb.agent import AgentClient
 from sdweb.config import load_settings
 from sdweb.mail.senders import sender_for
-from sdweb.worker import expiry_task, notify_task
+from sdweb.worker import disk_task, expiry_task, notify_task
 from sdweb.worker.mail_task import drain
 
 log = logging.getLogger("sdweb.worker")
 
 INTERVAL_S = 10
 EVERY_MINUTE = 6   # ticks
+EVERY_10_MINUTES = 60   # the disk check
 
 
 def _pass(name: str, fn: Callable[..., Any], *args: Any) -> None:
@@ -46,6 +47,8 @@ def main() -> None:
         if tick % EVERY_MINUTE == 0:
             _pass("expiry", expiry_task.run_once, agent, now, settings)
             _pass("notify", notify_task.run_once, agent, now, settings)
+        if tick % EVERY_10_MINUTES == 0:
+            _pass("disk alert", disk_task.run_once, agent, now, settings)
         _pass("mail outbox", drain, sender, now)
         tick += 1
         time.sleep(INTERVAL_S)

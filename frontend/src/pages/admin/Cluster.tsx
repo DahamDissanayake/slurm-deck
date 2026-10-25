@@ -151,7 +151,8 @@ function PodsPanel() {
   );
 }
 
-function ServicesPanel() {
+/** Each service on both nodes, refreshed every 15 s. */
+export function ServiceUnits() {
   const { data, failed } = usePolled<Services>(cluster.services, 15000);
   const list = (title: string, units: Record<string, string>) => (
     <div>
@@ -164,7 +165,7 @@ function ServicesPanel() {
     </div>
   );
   return (
-    <Panel title="Services">
+    <>
       {failed && <p role="alert" className="text-danger">Couldn't read service status.</p>}
       {data && (
         <div className="grid gap-4 sm:grid-cols-2">
@@ -173,7 +174,7 @@ function ServicesPanel() {
             : list("GPU host", data.gpu)}
         </div>
       )}
-    </Panel>
+    </>
   );
 }
 
@@ -181,7 +182,7 @@ function ServicesPanel() {
 export function Cluster() {
   return (
     <div className="space-y-6">
-      <QosPanel /><NodePanel /><PodsPanel /><ServicesPanel />
+      <QosPanel /><NodePanel /><PodsPanel /><Panel title="Services"><ServiceUnits /></Panel>
     </div>
   );
 }

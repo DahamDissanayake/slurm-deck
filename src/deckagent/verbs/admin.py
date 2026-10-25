@@ -5,6 +5,8 @@ areas run as sd-ops. Every change is written to the agent's audit log."""
 
 from __future__ import annotations
 
+import json
+import os
 import posixpath
 import re
 import subprocess
@@ -249,6 +251,37 @@ def unpublish_shared(ctx: RequestContext, payload: dict[str, Any]) -> dict[str, 
                          502)
     _audit(ctx, "admin.unpublish_shared", dest, {})
     return {}
+
+
+# --- deck-agent's own log ---------------------------------------------------------
+
+AUDIT_TAIL_BYTES = 4 * 1024 * 1024   # only the end of the log is read
+AUDIT_TAIL_MAX = 500
+
+
+@verb("admin.audit_tail", allow=ADMIN)
+def audit_tail(ctx: RequestContext, payload: dict[str, Any]) -> dict[str, Any]:
+    """The newest entries of the agent's JSONL audit log, newest first, optionally only
+    those after since_ts (an ISO time)."""
+    _admin(ctx)
+    limit = min(_int(payload.get("limit", 100), "The limit", 1), AUDIT_TAIL_MAX)
+    since = str(payload.get("since_ts") or "")
+    try:
+        with open(ctx.config.audit_log, "rb") as f:
+            f.seek(max(os.fstat(f.fileno()).st_size - AUDIT_TAIL_BYTES, 0))
+            lines = f.read().decode(errors="replace").splitlines()
+    except OSError:
+        lines = []
+    events: list[Any] = []
+    for line in reversed(lines):
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue   # the first line of a tail read may be cut in half
+        if (since and str(event.get("ts", "")) <= since) or len(events) >= limit:
+            break
+        events.append(event)
+    return {"events": events}
 
 
 # --- Service health ---------------------------------------------------------------
