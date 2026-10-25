@@ -5,6 +5,7 @@ import { ApiError } from "../../api/client";
 import { navigate } from "../../app/navigation";
 import { Panel } from "../../components/Panel";
 import { Alert, Field } from "../PublicPage";
+import { smallDanger } from "../../components/controls";
 import { smallButton } from "./AdminLayout";
 
 /** One account: its details and the admin actions on it. */
@@ -56,7 +57,7 @@ export function UserDetail({ id }: { id: number }) {
           <button type="button" className={smallButton}
                   onClick={() => admin.viewAs(a.id).then(() => navigate("/"))}>View as user</button>
         )}
-        <button type="button" className={`${smallButton} text-danger`}
+        <button type="button" className={`${smallDanger}`}
                 onClick={() => setDeleting(true)}>Delete…</button>
       </div>
       {deleting && <DeleteDialog account={a} onCancel={() => setDeleting(false)}
@@ -97,7 +98,7 @@ function DeleteDialog({ account, onCancel, onDone }: {
       {purge && <Field label={`Type ${account.username} to confirm`} value={typed}
                        onChange={(e) => setTyped(e.target.value)} />}
       <div className="flex gap-2">
-        <button type="button" className={`${smallButton} text-danger`} disabled={!allowed}
+        <button type="button" className={`${smallDanger}`} disabled={!allowed}
                 onClick={remove}>
           {purge ? "Delete account and files" : "Delete account, keep files"}
         </button>

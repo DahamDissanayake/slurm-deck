@@ -4,7 +4,7 @@ import { ApiError } from "../api/client";
 import { isLive, jobs, type QueueJob, stateLabel } from "../api/jobs";
 import { isSession } from "../api/sessions";
 import { Link } from "../app/navigation";
-import { smallButton } from "./buttons";
+import { small as smallButton } from "./controls";
 import { ExtendDialog } from "./ExtendDialog";
 import { OpenButton } from "./OpenButton";
 

@@ -1,4 +1,5 @@
 import { Link, match, useLocation } from "../../app/navigation";
+import { full, input, primary, small } from "../../components/controls";
 import { AppAccess } from "./AppAccess";
 import { Cluster } from "./Cluster";
 import { JobsAdmin } from "./JobsAdmin";
@@ -54,9 +55,6 @@ export function AdminLayout() {
   );
 }
 
-export const inputClass =
-  "w-full rounded-sm border border-border bg-surface-2 px-3 py-2 text-text";
-export const smallButton =
-  "rounded-sm border border-border px-3 py-1 text-sm text-text hover:border-accent disabled:opacity-50";
-export const primaryButton =
-  "rounded-sm bg-accent px-4 py-2 font-semibold text-bg disabled:opacity-50";
+export const inputClass = `${input} ${full}`;
+export const smallButton = small;
+export const primaryButton = primary;

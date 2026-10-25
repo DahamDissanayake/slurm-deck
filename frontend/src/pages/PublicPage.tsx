@@ -1,4 +1,5 @@
 import { type InputHTMLAttributes, type ReactNode, useId } from "react";
+import { full, input, primary } from "../components/controls";
 
 import pkg from "../../package.json";
 import { ThemeToggle } from "../app/ThemeToggle";
@@ -28,15 +29,14 @@ export function PublicPage({ title, children }: { title: string; children: React
 }
 
 /** A labelled input; the label is what screen readers and tests find it by. */
-export function Field({ label, ...input }: InputHTMLAttributes<HTMLInputElement> & {
+export function Field({ label, ...rest }: InputHTMLAttributes<HTMLInputElement> & {
   label: string;
 }) {
   const id = useId();
   return (
     <div className="mb-4">
       <label htmlFor={id} className="mb-1 block text-sm text-text-dim">{label}</label>
-      <input id={id} {...input}
-             className="w-full rounded-sm border border-border bg-surface-2 px-3 py-2 text-text" />
+      <input id={id} {...rest} className={`${input} ${full}`} />
     </div>
   );
 }
@@ -49,5 +49,4 @@ export function Alert({ children, tone = "danger" }: { children: ReactNode; tone
   );
 }
 
-export const button =
-  "w-full rounded-sm bg-accent px-4 py-2 font-semibold text-bg disabled:opacity-50";
+export const button = `${primary} ${full}`;

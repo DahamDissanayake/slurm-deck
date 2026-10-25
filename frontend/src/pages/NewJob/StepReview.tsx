@@ -5,6 +5,7 @@ import { type ClusterStatus, type LaunchSpec, newjob, type Qos, qosProblems } fr
 import { navigate } from "../../app/navigation";
 import { PodStepper } from "../../components/PodStepper";
 import { ScriptPreview } from "../../components/ScriptPreview";
+import { full, input } from "../../components/controls";
 import { field, primary, secondary } from "./StepInputs";
 
 const gb = (mb: number) => (mb / 1024).toFixed(1);
@@ -108,7 +109,7 @@ export function StepReview({ spec, qos, onChange, onBack }: {
       </details>
       <div className="flex gap-2">
         <input aria-label="Template name" placeholder="Template name" value={templateName}
-               onChange={(e) => setTemplateName(e.target.value)} className={`${field} mb-0 mt-0`} />
+               onChange={(e) => setTemplateName(e.target.value)} className={`${input} ${full}`} />
         <button type="button" className={secondary} disabled={!templateName.trim()}
                 onClick={saveTemplate}>Save as template</button>
       </div>

@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { ApiError } from "../api/client";
 import { newjob } from "../api/newjob";
 import { Panel } from "../components/Panel";
-import { field, primary, secondary } from "./NewJob/StepInputs";
+import { input, primary, secondary } from "../components/controls";
 
 /** "Email me when N pods are free": one subscription per account, sent once. */
 export function Notify() {
@@ -34,7 +34,7 @@ export function Notify() {
           {error && <p role="alert" className="mb-3 text-danger">{error}</p>}
           <div className="flex items-end gap-2">
             <label className="text-sm text-text-dim">Pods wanted
-              <input type="number" min={1} value={pods} className={`${field} mb-0 w-24`}
+              <input type="number" min={1} value={pods} className={`${input} w-24`}
                      onChange={(e) => setPods(Number(e.target.value))} />
             </label>
             <button type="button" className={primary}
