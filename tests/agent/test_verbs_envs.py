@@ -22,9 +22,14 @@ def envs(jobs, monkeypatch):  # noqa: F811
         python.chmod(0o755)
         if ok:
             (shared / env / ".sd-env-ok").write_text("")
+        _site(shared / env).mkdir(parents=True)
     (shared / "images").mkdir()
     (shared / "images/pytorch.sif").write_text("sif")
     return jobs
+
+
+def _site(env):
+    return env / "lib/python3.11/site-packages"
 
 
 def _ident(name):
@@ -53,31 +58,53 @@ def test_list_shows_prebuilt_mine_and_images(envs):
 
 
 def test_check_imports_reports_missing(envs):
+    """Packages are found by reading the env's site-packages: a package folder,
+    a module, an extension module, and a distribution whose import name
+    differs (top_level.txt)."""
+    site = _site(envs.dir / "shared/envs/vision")
+    (site / "numpy").mkdir()
+    (site / "numpy/__init__.py").write_text("")
+    (site / "six.py").write_text("")
+    (site / "_yaml.cpython-311-x86_64-linux-gnu.so").write_text("")
+    (site / "PyYAML-6.0.dist-info").mkdir()
+    (site / "PyYAML-6.0.dist-info/top_level.txt").write_text("_yaml\nyaml\n")
     script = envs.dir / "shared/users/amasha/train.py"
     script.write_text("import os, json\nimport tensorboard\nfrom torch import nn\n"
+                      "import numpy.linalg, six, yaml\n"
                       "from . import local\nimport helper\n")
     (envs.dir / "shared/users/amasha/helper.py").write_text("")
     r = envs.call("env.check_imports", {"env_path": str(envs.dir / "shared/envs/vision"),
                                         "script_path": str(script)})
     assert r["missing"] == ["tensorboard", "torch"]
-    assert ("amasha", "python") in envs.ran
+    assert [who for who, _ in envs.ran] == ["amasha"]   # read as the caller
 
 
-@pytest.mark.xfail(strict=True, reason="SLURM-57: env.check_imports runs the env's own "
-                   "bin/python, which the user controls, on the login node")
 def test_check_imports_never_runs_the_users_interpreter(envs):
-    """A user's env is the user's files: its bin/python must not be executed
-    outside a Slurm job (SLURM-49 finding 2)."""
+    """A user's env is the user's files: neither its bin/python nor a .pth file
+    in its site-packages may run outside a Slurm job (SLURM-49 finding 2)."""
     env = envs.dir / "shared/users/amasha/envs/evil"
     (env / "bin").mkdir(parents=True)
     marker = envs.dir / "ran-on-login-node"
     python = env / "bin/python"
     python.write_text(f'#!/bin/sh\ntouch "{marker}"\nexec {sys.executable} "$@"\n')
     python.chmod(0o755)
+    site = _site(env)
+    site.mkdir(parents=True)
+    (site / "evil.pth").write_text(f"import os; open({str(marker)!r}, 'w').close()\n")
+    script = envs.dir / "shared/users/amasha/train.py"
+    script.write_text("import os\nimport evil\n")
+    r = envs.call("env.check_imports", {"env_path": str(env), "script_path": str(script)})
+    assert r["missing"] == ["evil"]
+    assert not marker.exists()
+
+
+def test_check_imports_needs_a_python_env(envs):
+    env = envs.dir / "shared/users/amasha/envs/empty"
+    env.mkdir(parents=True)
     script = envs.dir / "shared/users/amasha/train.py"
     script.write_text("import os\n")
-    envs.call("env.check_imports", {"env_path": str(env), "script_path": str(script)})
-    assert not marker.exists()
+    e = _err(envs, "env.check_imports", {"env_path": str(env), "script_path": str(script)})
+    assert e.status == 400
 
 
 def test_check_imports_refuses_paths_outside_the_jail(envs):
