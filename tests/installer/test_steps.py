@@ -27,14 +27,15 @@ REPLIES = {r"^id -u sdweb": "990\n", r"^id -g sdweb": "990\n", r"^id -u sdworker
 
 class FakeTarget(steps.Target):
     def __init__(self, name):
-        self.name, self.cmds, self.fail_on = name, [], None
+        self.name, self.cmds, self.fail_on, self.codes = name, [], None, {}
 
     def run(self, cmd, input_text=None, check=True):
         self.cmds.append(cmd)
         if self.fail_on and re.search(self.fail_on, cmd):
             raise steps.InstallError(f"{self.name}: {cmd} failed")
         out = next((v for k, v in REPLIES.items() if re.search(k, cmd)), "")
-        rc = 1 if cmd.startswith("getent passwd") else 0   # every UID is free
+        rc = next((c for k, c in self.codes.items() if re.search(k, cmd)),
+                  1 if cmd.startswith("getent passwd") else 0)   # every UID is free
         return subprocess.CompletedProcess(cmd, rc, out, "")
 
 
@@ -92,3 +93,11 @@ def test_secret_files_get_the_documented_modes(ctx):
     assert modes[f"{d}/secrets.env"] == ("slurmadmin:sdweb", "0640")
     assert modes[f"{d}/web.env"] == ("slurmadmin:sdweb", "0640")
     assert f"chmod 0600 {d}/sdprov_ed25519" in " ".join(ctx.login.cmds)   # the GPU-host key
+
+
+def test_network_waits_for_a_hand_made_forward_and_installs_the_scripts_on_the_gpu_host(ctx):
+    assert steps.network(ctx) is True
+    assert any("/usr/local/lib/slurm-deck/sd-web-forward.sh --apply" in c for c in ctx.gpu.cmds)
+    assert any("systemctl enable --now sd-mdns-alias" in c for c in ctx.gpu.cmds)
+    ctx.gpu.codes = {"sd-web-forward.sh --apply": 2}   # the 2225 forward wasn't found
+    assert steps.network(ctx) is False

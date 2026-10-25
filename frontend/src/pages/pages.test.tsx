@@ -23,6 +23,22 @@ describe("SignIn", () => {
     expect(screen.queryByText("Apply for access")).not.toBeInTheDocument();
   });
 
+  it("offers the hosts-file line when the name may not resolve", async () => {
+    mockFetch({ "GET /api/public/apply-open": { body: { open: false } },
+                "GET /api/public/site": { body: { hostname: "slurmdeck.local", lan_addr: "10.35.4.100" } } });
+    render(<SignIn />);
+    expect(await screen.findByText("Can't reach slurmdeck.local?")).toBeInTheDocument();
+    expect(screen.getByText("10.35.4.100 slurmdeck.local")).toBeInTheDocument();
+  });
+
+  it("shows no hint when the address isn't configured", async () => {
+    mockFetch({ "GET /api/public/apply-open": { body: { open: false } },
+                "GET /api/public/site": { body: { hostname: "slurmdeck.local", lan_addr: "" } } });
+    render(<SignIn />);
+    await screen.findByText("Forgot password");
+    expect(screen.queryByText(/Can't reach/)).not.toBeInTheDocument();
+  });
+
   it("shows Apply when open, and bad_credentials as plain words", async () => {
     mockFetch({
       "GET /api/public/apply-open": { body: { open: true } },

@@ -47,6 +47,7 @@ class WebSettings:
     jupyter_env: str = "/shared/envs/jupyter"
     session_ports: tuple[int, int] = (8800, 8999)
     env_spec_dir: str = "/app/cluster/envs"
+    lan_addr: str = ""   # the address users reach, for the hosts-file hint
 
 
 def _int(env: Mapping[str, str], key: str, default: int) -> int:
@@ -126,4 +127,5 @@ def load_settings(env: Mapping[str, str]) -> WebSettings:
         or f"{(env.get('SD_NFS_ROOT') or '/shared').rstrip('/')}/envs/jupyter",
         session_ports=_port_range(env),
         env_spec_dir=env.get("SD_ENV_SPEC_DIR") or "/app/cluster/envs",
+        lan_addr=env.get("SD_LAN_ADDR", ""),
     )

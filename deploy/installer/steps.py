@@ -305,11 +305,27 @@ def web_stack(ctx: Ctx) -> None:
 
 
 def network(ctx: Ctx) -> bool:
-    script = ctx.repo / "deploy/cluster/network/network.sh"
-    if not script.exists():
-        ctx.log("network: the network scripts are not in this checkout yet; skipped")
+    """On the GPU host: forward 80 and 443 to the login node, limit the session ports to it,
+    and publish the name over mDNS. Returns False (tried again next run) when the host's
+    2225 forward can't be found, so the forward has to be set up by hand."""
+    gpu, src, lib = ctx.gpu, ctx.repo / "deploy/cluster/gpuhost", "/usr/local/lib/slurm-deck"
+    gpu.run(f"install -d -m 0755 {lib}")
+    gpu.write(f"{lib}/sd-web-forward.sh", (src / "sd-web-forward.sh").read_text(), "0755")
+    gpu.write(f"{lib}/sd-session-ports.nft", (src / "sd-session-ports.nft").read_text())
+    r = gpu.run(f"{lib}/sd-web-forward.sh --apply", check=False)
+    ctx.log((r.stdout or "").strip())
+    if r.returncode == 2:
+        ctx.log(f"network: {r.stderr.strip()}")
         return False
-    ctx.login.run(f"{shlex.quote(str(script))} --apply")
+    if r.returncode:
+        raise InstallError(f"network: the forward failed: {r.stderr.strip()}")
+    if gpu.run("command -v avahi-publish >/dev/null", check=False).returncode:
+        ctx.log("network: avahi-utils isn't installed on the GPU host, so the .local name "
+                "isn't announced; users can use the hosts-file line instead")
+        return True
+    gpu.write("/etc/systemd/system/sd-mdns-alias.service",
+              (src / "sd-mdns-alias.service").read_text())
+    gpu.run("systemctl daemon-reload && systemctl enable --now sd-mdns-alias")
     return True
 
 

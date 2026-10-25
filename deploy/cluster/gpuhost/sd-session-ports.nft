@@ -1,0 +1,16 @@
+# On the GPU host: the notebook, TensorBoard and terminal ports of running sessions are
+# reachable only from the login node (the web proxy). sd-web-forward.sh replaces the three
+# defines with the site's values before loading this file; the ones here are documentation
+# addresses so the file parses on its own.
+define LOGIN_ADDR = 192.0.2.10
+define COMPUTE_ADDR = 192.0.2.1
+define SESSION_PORTS = 8800-8999
+
+table inet sd_sessions {
+    chain input {
+        type filter hook input priority -10; policy accept;
+        iif "lo" accept
+        ip daddr $COMPUTE_ADDR tcp dport $SESSION_PORTS ip saddr $LOGIN_ADDR accept
+        ip daddr $COMPUTE_ADDR tcp dport $SESSION_PORTS drop
+    }
+}
