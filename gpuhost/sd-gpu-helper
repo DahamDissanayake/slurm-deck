@@ -42,7 +42,8 @@ CONFIG_FILE = "/etc/slurm-deck-web/gpu-helper.env"
 DEFAULTS = {"NFS_ROOT": "/shared", "WEBUSERS_GROUP": "webusers",
             "GPUUSERS_GROUP": "gpuusers", "ADMIN_GROUP": "gpuadmins"}
 ARITY = {"create-account": 2, "create-folders": 2, "folder-info": 1, "archive": 1,
-         "purge": 1, "delete-account": 1, "ping": 0}
+         "purge": 1, "delete-account": 1, "ping": 0, "service-status": 0}
+SERVICE_UNITS = ("slurmd", "munge", "sd-stats-writer")   # the only units it will report on
 
 
 class Refused(Exception):
@@ -188,6 +189,18 @@ def load_config(path: str) -> dict:
     return cfg
 
 
+def service_status() -> dict:
+    """systemctl is-active for each allowed unit: active, inactive, failed or unknown."""
+    out = {}
+    for unit in SERVICE_UNITS:
+        try:
+            r = subprocess.run(["systemctl", "is-active", unit], capture_output=True, text=True)
+            out[unit] = r.stdout.strip() or "unknown"
+        except OSError:
+            out[unit] = "unknown"
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--root")
@@ -204,6 +217,8 @@ def main() -> int:
         helper = Helper(cfg, opts.dry_run)
         if op == "ping":
             result = {"pong": True}
+        elif op == "service-status":
+            result = {"units": service_status()}
         elif uid is not None:
             result = getattr(helper, op.replace("-", "_"))(user, uid)
         else:

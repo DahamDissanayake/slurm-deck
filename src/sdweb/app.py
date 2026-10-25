@@ -15,6 +15,7 @@ from sdweb import db, static
 from sdweb.accounts.allowlist import router as allowlist_router
 from sdweb.accounts.applications import router as applications_router
 from sdweb.accounts.routes import router as accounts_router
+from sdweb.admin.routes import router as admin_router
 from sdweb.agent import AgentClient
 from sdweb.auth.routes import router as auth_router
 from sdweb.cluster import router as cluster_router
@@ -52,7 +53,7 @@ def create_app(settings: WebSettings, agent: Any | None = None) -> FastAPI:
     app.include_router(applications_router)
     for router in (cluster_router, jobs_router, templates_router, live_router,
                    notify_router, uploads_router, files_router, envs_router, proxy_router,
-                   usage_router):
+                   usage_router, admin_router):
         app.include_router(router)
     return app
 
