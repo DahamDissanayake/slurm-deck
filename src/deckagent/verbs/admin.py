@@ -115,7 +115,7 @@ def qos_set(ctx: RequestContext, payload: dict[str, Any]) -> dict[str, Any]:
 # --- Node: drain, resume ----------------------------------------------------------
 
 def _node(ctx: RequestContext, payload: dict[str, Any]) -> str:
-    node = payload.get("node")
+    node = payload.get("node") or ctx.config.compute_node   # there is one node: the default
     if not node or node != ctx.config.compute_node:
         raise _bad("bad_node", "That isn't a node of this cluster.")
     return str(node)
