@@ -5,8 +5,6 @@ import { DAYS, type Personal, usage } from "../api/usage";
 import { Panel } from "../components/Panel";
 import { UsageTabs } from "../components/UsageTabs";
 
-const hours = (n: number) => n.toFixed(1);
-
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-sm border border-border bg-surface-2 p-4">
@@ -65,8 +63,8 @@ export function Usage() {
       {data && (
         <>
           <div className="mb-6 grid gap-3 sm:grid-cols-3">
-            <Stat label="GPU-hours" value={hours(data.gpu_hours)} />
-            <Stat label="CPU-hours" value={hours(data.cpu_hours)} />
+            <Stat label="GPU-hours" value={data.gpu_hours.toFixed(1)} />
+            <Stat label="CPU-hours" value={data.cpu_hours.toFixed(1)} />
             <Stat label="Jobs" value={String(jobs)} />
           </div>
           <StateBar counts={data.jobs_by_state} />

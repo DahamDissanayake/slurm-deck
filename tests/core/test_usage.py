@@ -8,16 +8,11 @@ def test_gpu_hours_from_pods():
     rows = [SacctRow("amasha", "COMPLETED", 3 * H, cpus=8, pods=2)]
     s = summarize(rows, pods_total=4)
     assert s.gpu_hours == 1.5 and s.cpu_hours == 24.0
-    assert s.jobs_by_state == {"COMPLETED": 1}
-
-
-def test_no_pods_known_means_no_gpu_hours():
-    assert summarize([SacctRow("a", "COMPLETED", H, 4, 2)], pods_total=0).gpu_hours == 0.0
+    assert summarize(rows, pods_total=0).gpu_hours == 0.0   # pod count unknown
 
 
 def test_jobs_are_counted_by_state():
-    rows = [SacctRow("a", "COMPLETED", H, 1, 0), SacctRow("a", "COMPLETED", H, 1, 0),
-            SacctRow("a", "FAILED", H, 1, 0)]
+    rows = [SacctRow("a", "COMPLETED", H, 1, 0)] * 2 + [SacctRow("a", "FAILED", H, 1, 0)]
     assert summarize(rows, 4).jobs_by_state == {"COMPLETED": 2, "FAILED": 1}
 
 

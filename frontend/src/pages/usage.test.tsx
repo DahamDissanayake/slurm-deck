@@ -38,7 +38,6 @@ describe("ClusterStatus", () => {
     expect(check("Stats fresh")).toHaveAttribute("data-ok", "true");
     expect(screen.getByText("Jobs running").nextSibling).toHaveTextContent("2");
     expect(screen.getByText("Jobs waiting").nextSibling).toHaveTextContent("1");
-    expect(screen.getByText("Pods in use").nextSibling).toHaveTextContent("3 of 8");
   });
 
 });

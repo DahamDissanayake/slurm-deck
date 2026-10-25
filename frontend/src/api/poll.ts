@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 
-/** The latest result of load(), refreshed every ms while mounted. `failed` is
- * true when the most recent attempt failed; the previous data is kept. */
+/** load()'s latest result, refreshed every ms; `failed` if the last try failed. */
 export function usePolled<T>(load: () => Promise<T>, ms: number):
     { data: T | null; failed: boolean } {
   const [data, setData] = useState<T | null>(null);

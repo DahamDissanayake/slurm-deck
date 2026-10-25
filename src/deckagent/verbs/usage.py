@@ -40,8 +40,7 @@ def _days(payload: dict[str, Any]) -> int:
     days = payload.get("days")
     if days not in DAYS:
         raise AgentError("bad_days", "Choose 7, 30 or 90 days.", 422)
-    assert isinstance(days, int)
-    return days
+    return int(days)
 
 
 def _admin_only(ctx: RequestContext) -> None:

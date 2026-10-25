@@ -29,6 +29,7 @@ def usage(agent, monkeypatch):
     agent.ran = []
     for name, body in (("sacct", SACCT), ("du", DU)):
         (agent.dir / "bin" / name).write_text(body)
+        (agent.dir / "bin" / name).chmod(0o755)
     (agent.dir / "sacct.me").write_text(
         "amasha|COMPLETED|10800|cpu=8,gres/shard=4\namasha|FAILED|3600|cpu=2\n")
     (agent.dir / "sacct.all").write_text(
