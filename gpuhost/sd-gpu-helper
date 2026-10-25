@@ -19,6 +19,7 @@ Standard library only, so it runs on the host's system python as is.
 """
 
 import argparse
+import grp
 import json
 import os
 import pwd
@@ -50,11 +51,71 @@ class Refused(Exception):
     pass
 
 
+PRIVILEGED_GROUPS = frozenset({"sudo", "wheel", "admin"})
+
+
+class Accounts:
+    """The host's accounts, from pwd and grp. Tests pass --fake-accounts, a JSON
+    file of {name: {"uid": n, "groups": [...]}}, instead. Like --root it is an
+    argument, and sudoers lets sdprov run the helper with none."""
+
+    def __init__(self, fake_path=None) -> None:
+        self.fake = None
+        if fake_path:
+            with open(fake_path) as f:
+                self.fake = json.load(f)
+
+    def lookup(self, name: str):
+        """(uid, names of every group it is in), or None when there's no such account."""
+        if self.fake is not None:
+            found = self.fake.get(name)
+            return (int(found["uid"]), frozenset(found.get("groups", []))) if found else None
+        try:
+            entry = pwd.getpwnam(name)
+        except KeyError:
+            return None
+        groups = {g.gr_name for g in grp.getgrall()
+                  if name in g.gr_mem or g.gr_gid == entry.pw_gid}
+        return entry.pw_uid, frozenset(groups)
+
+    def owner_of(self, uid: int):
+        """The account with this UID, or None."""
+        if self.fake is not None:
+            return next((n for n, a in self.fake.items() if int(a["uid"]) == uid), None)
+        try:
+            return pwd.getpwuid(uid).pw_name
+        except KeyError:
+            return None
+
+
 class Helper:
-    def __init__(self, cfg: dict, dry_run: bool) -> None:
+    def __init__(self, cfg: dict, dry_run: bool, accounts: Accounts) -> None:
         self.root = os.path.realpath(cfg["NFS_ROOT"])
         self.cfg = cfg
         self.dry_run = dry_run
+        self.accounts = accounts
+
+    def web_account(self, user: str):
+        """The UID of user's account if it is a web account (in WEBUSERS_GROUP and
+        no privileged group); None when there is no such account. Every other
+        account is refused: the helper never changes a sysadmin's, a shell
+        user's or a system account (SLURM-59)."""
+        found = self.accounts.lookup(user)
+        if found is None:
+            return None
+        uid, groups = found
+        if (uid < UID_MIN or self.cfg["WEBUSERS_GROUP"] not in groups
+                or groups & (PRIVILEGED_GROUPS | {self.cfg["ADMIN_GROUP"]})):
+            raise Refused(f"{user} isn't a web account")
+        return uid
+
+    def unowned(self, paths: list) -> None:
+        """With the account already gone, its folders may only be removed when
+        their owner UID belongs to nobody else."""
+        for path in paths:
+            other = self.accounts.owner_of(os.lstat(path).st_uid)
+            if other is not None:
+                raise Refused(f"{path} belongs to {other}")
 
     def run(self, *cmd: str, ok_codes: tuple = (0,)) -> None:
         if self.dry_run:
@@ -75,11 +136,8 @@ class Helper:
         return path
 
     def create_account(self, user: str, uid: int) -> dict:
-        try:
-            existing = pwd.getpwnam(user)
-        except KeyError:
-            existing = None
-        if existing is not None and existing.pw_uid != uid:
+        existing = self.web_account(user)   # a rerun may find its own web account
+        if existing is not None and existing != uid:
             raise Refused(f"{user} already exists with another UID")
         if existing is None:
             self.run("groupadd", "-g", str(uid), user)
@@ -92,6 +150,7 @@ class Helper:
         return {}
 
     def create_folders(self, user: str, uid: int) -> dict:
+        self.web_account(user)
         admin = self.cfg["ADMIN_GROUP"]
         for sub in ("users", "jobs"):
             path = self.area(sub, user)
@@ -117,6 +176,8 @@ class Helper:
         if not os.path.lexists(src):
             return {"archived": False}
         src = self.area("users", user)
+        if self.web_account(user) is None:
+            self.unowned([src])
         dst = src + ".offboarded"
         if os.path.lexists(dst):
             # Never delete an earlier archive: move it aside under a timestamp.
@@ -132,16 +193,14 @@ class Helper:
         # Check both before removing either.
         paths = [self.area(sub, user) for sub in ("users", "jobs")
                  if os.path.lexists(os.path.join(self.root, sub, user))]
+        if self.web_account(user) is None:
+            self.unowned(paths)
         for path in paths:
             self.run("rm", "-rf", "--one-file-system", path)
         return {"removed": len(paths)}
 
     def delete_account(self, user: str) -> dict:
-        try:
-            if pwd.getpwnam(user).pw_uid < UID_MIN:
-                raise Refused(f"{user} is a system account")
-        except KeyError:
-            pass
+        self.web_account(user)   # system, sysadmin and shell accounts are refused
         self.run("pkill", "-KILL", "-u", user, ok_codes=(0, 1))   # 1: no processes
         self.run("userdel", user, ok_codes=(0, 6))                 # 6: no such user
         self.run("groupdel", user, ok_codes=(0, 6))
@@ -154,7 +213,7 @@ class Helper:
         return {}
 
 
-def parse(words: list) -> tuple:
+def parse(words: list, accounts: Accounts) -> tuple:
     """(op, user, uid) for a valid command; Refused otherwise."""
     if not words or words[0] not in ARITY or len(words) - 1 != ARITY[words[0]]:
         raise Refused("unknown command")
@@ -167,10 +226,7 @@ def parse(words: list) -> tuple:
         if not args[1].isdigit() or not UID_MIN <= int(args[1]) <= UID_MAX:
             raise Refused("invalid uid")
         uid = int(args[1])
-        try:
-            owner = pwd.getpwuid(uid).pw_name
-        except KeyError:
-            owner = None
+        owner = accounts.owner_of(uid)
         if owner is not None and owner != user:
             raise Refused("uid belongs to another account")
     return op, user, uid
@@ -206,6 +262,7 @@ def main() -> int:
     ap.add_argument("--root")
     ap.add_argument("--config", default=CONFIG_FILE)
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--fake-accounts")
     opts, words = ap.parse_known_args()
     if not words:
         words = os.environ.get("SSH_ORIGINAL_COMMAND", "").split()
@@ -213,8 +270,9 @@ def main() -> int:
     if opts.root:
         cfg["NFS_ROOT"] = opts.root
     try:
-        op, user, uid = parse(words)
-        helper = Helper(cfg, opts.dry_run)
+        accounts = Accounts(opts.fake_accounts)
+        op, user, uid = parse(words, accounts)
+        helper = Helper(cfg, opts.dry_run, accounts)
         if op == "ping":
             result = {"pong": True}
         elif op == "service-status":
