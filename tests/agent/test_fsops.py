@@ -183,6 +183,47 @@ def test_extract_zip_and_tar(tree):
     assert fs(tree, "extract", arc, "users/amasha/out").returncode == 2  # would overwrite
 
 
+def _bomb(tree: Path) -> str:
+    """A tiny zip that declares 64 MiB of zeros."""
+    path = tree / "users/amasha/bomb.zip"
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("ok.txt", b"fine")
+        z.writestr("zeros.bin", b"\0" * (64 * 1024 * 1024))
+    assert path.stat().st_size < 1024 * 1024
+    return "users/amasha/bomb.zip"
+
+
+def test_extract_refuses_bomb_over_cap(tree):
+    arc = _bomb(tree)
+    fs(tree, "mkdir", "users/amasha/out")
+    r = fs(tree, "extract", "--max-bytes", str(1024 * 1024), arc, "users/amasha/out")
+    assert r.returncode == 2 and "too large" in js(r)["error"]
+    assert list((tree / "users/amasha/out").iterdir()) == []      # nothing extracted at all
+
+
+def test_extract_refuses_bomb_over_free_space(tree):
+    arc = _bomb(tree)
+    fs(tree, "mkdir", "users/amasha/out")
+    free = os.statvfs(tree).f_bavail * os.statvfs(tree).f_frsize
+    # A margin that leaves less than 64 MiB free makes the declared size too big.
+    r = fs(tree, "extract", "--margin", str(max(free - 1024 * 1024, 0)), arc, "users/amasha/out")
+    assert r.returncode == 2 and "free space" in js(r)["error"]
+    assert list((tree / "users/amasha/out").iterdir()) == []
+    r = fs(tree, "extract", "--max-bytes", str(65 * 1024 * 1024), arc, "users/amasha/out")
+    assert r.returncode == 0, r.stdout
+    assert (tree / "users/amasha/out/zeros.bin").stat().st_size == 64 * 1024 * 1024
+
+
+def test_copy_member_stops_past_declared_size(tmp_path):
+    from deckagent.fsops import Refused, _copy_member
+    out = tmp_path / "m"
+    with pytest.raises(Refused):
+        _copy_member(io.BytesIO(b"x" * 10), str(out), declared=4, name="m")
+    assert not out.exists()                                        # partial file removed
+    _copy_member(io.BytesIO(b"abcd"), str(out), declared=4, name="m")
+    assert out.read_bytes() == b"abcd"
+
+
 def test_zipstream_is_a_valid_zip(tree):
     (tree / "users/amasha/proj/sub").mkdir()
     (tree / "users/amasha/proj/sub/w.bin").write_bytes(b"\x00" * 3000)
