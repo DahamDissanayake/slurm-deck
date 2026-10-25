@@ -183,8 +183,8 @@ class _Handler(socketserver.BaseRequestHandler):
         caller = self.caller
         reported = self.reported
         actor = caller.username if caller and caller.username else reported.get("actor")
-        audit(config, actor=actor, acting_admin=caller.acting_admin if caller else None, verb=self.verb_name,
-              target=reported.get("target", ""),
+        audit(config, actor=actor, acting_admin=caller.acting_admin if caller else None,
+              verb=self.verb_name, target=reported.get("target", ""),
               detail={"peer_uid": self.peer, "role": caller.role if caller else None},
               result=result)
         lines = [f"HTTP/1.1 {status} {REASONS.get(status, 'Error')}", f"Content-Type: {ctype}"]
