@@ -54,6 +54,15 @@ def _conflict(ctx, payload):
     raise AgentError("busy", "Try again later.", 409)
 
 
+@registry.verb("granted", allow=frozenset({"user"}), session=False)
+def _granted(ctx, payload):
+    # A grant-authorised handler names who it acted for once the grant checks out.
+    ctx.audit.update(actor="amasha", target="upl-0001-amasha")
+    if payload.get("fail"):
+        raise AgentError("offset_mismatch", "Wrong offset.", 409)
+    return "ok"
+
+
 def _resolve(peer_uid, headers, store, config):
     token = headers.get("x-sd-session", "")
     if token == "admin":
@@ -241,6 +250,15 @@ def test_server_audits_each_verb(agent):
     got = [(x["verb"], x["actor"], x["result"]) for x in _audit_lines(agent)]
     assert got == [("echo", "amasha", "ok"), ("admin.only", "amasha", "not_allowed"),
                    ("conflict", "dinuka", "not_allowed"), ("no.such", None, "unknown_verb")]
+
+
+def test_session_free_handler_reports_its_actor(agent):
+    post(agent, "granted", json={}, session="")
+    post(agent, "granted", json={"fail": True}, session="")
+    got = [(x["verb"], x["actor"], x["target"], x["detail"]["role"], x["result"])
+           for x in _audit_lines(agent)]
+    assert got == [("granted", "amasha", "upl-0001-amasha", "grant", "ok"),
+                   ("granted", "amasha", "upl-0001-amasha", "grant", "offset_mismatch")]
 
 
 def test_refused_peer_is_audited(agent_with_uids_excluding_me):

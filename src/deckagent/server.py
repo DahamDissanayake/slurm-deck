@@ -156,6 +156,7 @@ class _Handler(socketserver.BaseRequestHandler):
     peer: int | None = None
     verb_name = ""
     caller: Caller | None = None
+    reported: Mapping[str, str] = {}   # RequestContext.audit, as the handler left it
 
     def handle(self) -> None:
         sock: socket.socket = self.request
@@ -180,8 +181,10 @@ class _Handler(socketserver.BaseRequestHandler):
             status, ctype, result = 500, "application/json", "internal"
             body = error_body("internal", "Something went wrong.")
         caller = self.caller
-        audit(config, actor=caller.username if caller else None,
-              acting_admin=caller.acting_admin if caller else None, verb=self.verb_name,
+        reported = self.reported
+        actor = caller.username if caller and caller.username else reported.get("actor")
+        audit(config, actor=actor, acting_admin=caller.acting_admin if caller else None, verb=self.verb_name,
+              target=reported.get("target", ""),
               detail={"peer_uid": self.peer, "role": caller.role if caller else None},
               result=result)
         lines = [f"HTTP/1.1 {status} {REASONS.get(status, 'Error')}", f"Content-Type: {ctype}"]
@@ -236,11 +239,13 @@ class _Handler(socketserver.BaseRequestHandler):
             if caller.role not in verb.allow:
                 raise AgentError("not_allowed", "You are not allowed to do that.", 403)
         else:   # the handler authorises the request itself (an upload grant)
-            caller = Caller(None, "grant", None, False, None)
+            caller = self.caller = Caller(None, "grant", None, False, None)
 
         payload: Any = (read_json_body(reader.read(length)) if verb.body == "json"
                         else _Body(reader, length))
-        result = verb.handler(RequestContext(caller, config, headers, server.store), payload)
+        ctx = RequestContext(caller, config, headers, server.store)
+        self.reported = ctx.audit   # read even when the handler raises
+        result = verb.handler(ctx, payload)
         return result if isinstance(result, RawResponse) else json_response(result)
 
 
