@@ -34,8 +34,7 @@ export function ClusterStatus() {
   }, []);
   const { data, failed } = usePolled(load, POLL_MS);
   const node = data?.status.node ?? null;
-  const running = data?.queue.filter((j) => j.state === "RUNNING").length ?? 0;
-  const pending = data?.queue.filter((j) => j.state === "PENDING").length ?? 0;
+  const count = (state: string) => data?.queue.filter((j) => j.state === state).length ?? 0;
   return (
     <Panel title="Cluster status">
       <UsageTabs />
@@ -49,8 +48,8 @@ export function ClusterStatus() {
         <dl className="grid gap-3 sm:grid-cols-2">
           <Item label="Node state" value={node?.state ?? "Unknown"} />
           <Item label="Pods in use" value={`${data.status.pods_used} of ${data.status.pods_total}`} />
-          <Item label="Jobs running" value={String(running)} />
-          <Item label="Jobs waiting" value={String(pending)} />
+          <Item label="Jobs running" value={String(count("RUNNING"))} />
+          <Item label="Jobs waiting" value={String(count("PENDING"))} />
         </dl>
       )}
     </Panel>

@@ -3,7 +3,6 @@ import { Link, useLocation } from "../app/navigation";
 const TABS = [["/usage", "Usage"], ["/usage/hardware", "Hardware stats"],
               ["/usage/cluster", "Cluster status"]] as const;
 
-/** The three pages under Usage. */
 export function UsageTabs() {
   const { pathname } = useLocation();
   return (

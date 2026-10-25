@@ -14,7 +14,6 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-/** A bar split by job state, with the counts beside it. */
 export function StateBar({ counts }: { counts: Record<string, number> }) {
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
   if (total === 0) return <p className="text-sm text-text-dim">No jobs in this period.</p>;

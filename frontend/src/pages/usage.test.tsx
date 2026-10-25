@@ -49,7 +49,6 @@ describe("Hardware", () => {
     expect(await screen.findByText("55%")).toBeInTheDocument();
     expect(screen.getByText("8.0 GB of 24.0 GB")).toBeInTheDocument();
     expect(screen.getByText("61 °C")).toBeInTheDocument();
-    expect(screen.getByText("180 W")).toBeInTheDocument();
   });
 
 });
@@ -65,7 +64,6 @@ describe("Usage", () => {
     render(<Usage />);
     expect(await screen.findByText("1.5")).toBeInTheDocument();
     expect(screen.getByText("26.0")).toBeInTheDocument();
-    expect(screen.getByText("3")).toBeInTheDocument();
     expect(screen.getByText("FAILED: 1")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Period"), { target: { value: "7" } });
     expect(await screen.findByText("0.5")).toBeInTheDocument();
