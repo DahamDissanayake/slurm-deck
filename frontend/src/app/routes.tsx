@@ -2,9 +2,11 @@ import type { ReactNode } from "react";
 
 import { AdminLayout } from "../pages/admin/AdminLayout";
 import { Apply } from "../pages/Apply";
+import { ClusterStatus } from "../pages/ClusterStatus";
 import { Environments } from "../pages/Environments";
 import { Files } from "../pages/Files";
 import { ForgotPassword } from "../pages/ForgotPassword";
+import { Hardware } from "../pages/Hardware";
 import { Home } from "../pages/Home";
 import { JobDetail } from "../pages/JobDetail";
 import { Jobs } from "../pages/Jobs";
@@ -15,6 +17,7 @@ import { Services } from "../pages/Services";
 import { SetPassword } from "../pages/SetPassword";
 import { SignIn } from "../pages/SignIn";
 import { Terminal } from "../pages/Terminal";
+import { Usage } from "../pages/Usage";
 import { AppShell } from "./AppShell";
 import { match, useLocation } from "./navigation";
 
@@ -29,7 +32,7 @@ const PUBLIC: [string, () => ReactNode][] = [
 // Every signed-in page; later phases replace the placeholders.
 const PAGES: [string, string][] = [
   ["/models", "Models"],
-  ["/usage", "Usage"], ["/account/password", "Change password"],
+  ["/account/password", "Change password"],
 ];
 
 export function App() {
@@ -43,6 +46,9 @@ export function App() {
   if (pathname === "/new") return <AppShell><NewJob /></AppShell>;
   if (pathname === "/notify") return <AppShell><Notify /></AppShell>;
   if (pathname === "/services") return <AppShell><Services /></AppShell>;
+  if (pathname === "/usage") return <AppShell><Usage /></AppShell>;
+  if (pathname === "/usage/hardware") return <AppShell><Hardware /></AppShell>;
+  if (pathname === "/usage/cluster") return <AppShell><ClusterStatus /></AppShell>;
   const terminal = match("/sessions/terminal/:jobId", pathname);
   if (terminal) return <Terminal jobId={terminal.jobId} />;
   if (pathname === "/envs") return <AppShell><Environments /></AppShell>;
