@@ -1,6 +1,4 @@
-"""GET/PUT /api/admin/settings: the few knobs an admin can change, validated
-as a set (nothing is saved unless every value is good) and each change audited
-with its old and new value."""
+"""GET/PUT /api/admin/settings: validated as a set (all or nothing), each change audited."""
 
 from __future__ import annotations
 

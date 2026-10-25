@@ -1,5 +1,4 @@
-"""Disk-full alert: every 10 minutes, if /shared is at or over the admin's
-percentage, email every active admin, then stay quiet for 24 hours."""
+"""Disk-full alert: if /shared is over the admin's percentage, mail the admins, then wait 24 h."""
 
 from __future__ import annotations
 

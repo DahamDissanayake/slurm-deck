@@ -1,7 +1,5 @@
-"""/api/admin monitoring: the audit trail, deck-agent's own log, the mail log
-and service health. Lists are paged on the server (one extra row says whether
-there is a next page) and filtered on indexed columns, so the first page of a
-very large audit trail is quick."""
+"""/api/admin monitoring: audit trail, deck-agent's log, mail log and services. Lists are
+paged and filtered on the server (an extra row says whether there is a next page)."""
 
 from __future__ import annotations
 

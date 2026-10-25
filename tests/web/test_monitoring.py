@@ -59,8 +59,7 @@ def test_the_first_page_of_100000_audit_rows_comes_back_in_under_a_second(mon):
         s.execute(text("ANALYZE audit_events"))
     start = time.perf_counter()
     r = admin.get("/api/admin/audit?page_size=50")
-    assert r.status_code == 200 and len(r.json()["events"]) == 50
-    assert time.perf_counter() - start < 1.0
+    assert len(r.json()["events"]) == 50 and time.perf_counter() - start < 1.0
     assert admin.get("/api/admin/audit?action=job.3&page_size=50").json()["has_more"]
 
 

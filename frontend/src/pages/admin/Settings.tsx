@@ -31,7 +31,6 @@ function problem([key, , kind, low, high]: (typeof FIELDS)[number], v: string, p
 }
 
 const show = (v: unknown) => (v == null ? "" : String(v));
-
 /** The admin settings form: validated as you type, saved only when every value is good. */
 export function Settings() {
   const [reply, setReply] = useState<SettingsReply | null>(null);
