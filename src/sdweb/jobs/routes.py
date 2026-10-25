@@ -170,8 +170,10 @@ def list_jobs(ctx: User, request: Request, db: Db) -> dict:
 
 
 @router.get("/history")
-def history(ctx: User, request: Request, days: int = 30, state: str = "") -> dict:
-    jobs = _call(request, ctx, "job.history", {"days": days})["jobs"]
+def history(ctx: User, request: Request, days: int = 30, state: str = "",
+            all_users: bool = False) -> dict:
+    """all_users is for admins; deck-agent refuses it for anyone else."""
+    jobs = _call(request, ctx, "job.history", {"days": days, "all_users": all_users})["jobs"]
     return {"jobs": [j for j in jobs if not state or j["state"] == state]}
 
 
