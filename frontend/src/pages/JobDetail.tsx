@@ -6,6 +6,7 @@ import { Link } from "../app/navigation";
 import { ExtendDialog } from "../components/ExtendDialog";
 import { smallButton, StateChip } from "../components/JobCard";
 import { LogViewer } from "../components/LogViewer";
+import { OpenButton } from "../components/OpenButton";
 import { Panel } from "../components/Panel";
 
 const STEPS = ["Queued", "Starting", "Running", "Ended"] as const;
@@ -54,6 +55,7 @@ export function JobDetail({ id }: { id: string }) {
           <StateChip state={job.state} />
           <Timeline state={job.state} />
           <div className="ml-auto flex gap-2">
+            {live && job.session && <OpenButton jobId={id} />}
             {live && (
               <>
                 <button type="button" className={smallButton} onClick={() => setExtending(true)}>Extend…</button>

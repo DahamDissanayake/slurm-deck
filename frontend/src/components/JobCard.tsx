@@ -2,8 +2,11 @@ import { useState } from "react";
 
 import { ApiError } from "../api/client";
 import { isLive, jobs, type QueueJob, stateLabel } from "../api/jobs";
+import { isSession } from "../api/sessions";
 import { Link } from "../app/navigation";
+import { smallButton } from "./buttons";
 import { ExtendDialog } from "./ExtendDialog";
+import { OpenButton } from "./OpenButton";
 
 const CHIP = {
   Queued: "border-text-dim text-text-dim",
@@ -12,8 +15,7 @@ const CHIP = {
   Ended: "border-border text-text-dim",
 };
 
-export const smallButton =
-  "rounded-sm border border-border px-3 py-1 text-sm text-text hover:border-accent disabled:opacity-50";
+export { smallButton };
 
 export function StateChip({ state }: { state: string }) {
   const label = stateLabel(state);
@@ -52,6 +54,7 @@ export function JobCard({ job }: { job: QueueJob }) {
         {job.time_used} of {job.time_limit} · {job.pods} pod{job.pods === 1 ? "" : "s"}
       </p>
       <div className="flex flex-wrap gap-2">
+        {live && isSession(job.kind) && <OpenButton jobId={job.job_id} />}
         <Link href={`/jobs/${job.job_id}`} className={smallButton}>Logs</Link>
         {live && (
           <>
