@@ -3,11 +3,12 @@ import { AppAccess } from "./AppAccess";
 import { NewUser } from "./NewUser";
 import { Requests } from "./Requests";
 import { UserDetail } from "./UserDetail";
+import { UsageAdmin } from "./UsageAdmin";
 import { Users } from "./Users";
 
-// Later phases add Settings, Jobs, Usage, Cluster, Shared assets and Monitoring.
+// Later phases add Settings, Jobs, Cluster, Shared assets and Monitoring.
 const TABS = [["/admin/requests", "Requests"], ["/admin/users", "Users"],
-              ["/admin/access", "Application access"]] as const;
+              ["/admin/access", "Application access"], ["/admin/usage", "Usage"]] as const;
 
 function Page({ path }: { path: string }) {
   if (match("/admin/users/new", path)) return <NewUser />;
@@ -15,6 +16,7 @@ function Page({ path }: { path: string }) {
   if (user) return <UserDetail id={Number(user.id)} />;
   if (match("/admin/users", path)) return <Users />;
   if (match("/admin/access", path)) return <AppAccess />;
+  if (match("/admin/usage", path)) return <UsageAdmin />;
   return <Requests />;
 }
 

@@ -12,6 +12,7 @@ import deckagent.verbs.cluster  # noqa: F401
 import deckagent.verbs.envs  # noqa: F401
 import deckagent.verbs.files  # noqa: F401
 import deckagent.verbs.jobs  # noqa: F401
+import deckagent.verbs.usage  # noqa: F401
 from deckagent import janitor
 from deckagent.config import load_config
 from deckagent.server import AgentServer

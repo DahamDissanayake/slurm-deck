@@ -28,6 +28,7 @@ from sdweb.jobs.templates import router as templates_router
 from sdweb.live.routes import router as live_router
 from sdweb.notify.routes import router as notify_router
 from sdweb.proxy.routes import router as proxy_router
+from sdweb.usage.routes import router as usage_router
 
 # Where the image puts the built frontend (deploy/web.Dockerfile).
 STATIC_DIR = "/app/static"
@@ -50,7 +51,8 @@ def create_app(settings: WebSettings, agent: Any | None = None) -> FastAPI:
     app.include_router(allowlist_router)
     app.include_router(applications_router)
     for router in (cluster_router, jobs_router, templates_router, live_router,
-                   notify_router, uploads_router, files_router, envs_router, proxy_router):
+                   notify_router, uploads_router, files_router, envs_router, proxy_router,
+                   usage_router):
         app.include_router(router)
     return app
 
