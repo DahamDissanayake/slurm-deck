@@ -31,6 +31,15 @@ describe("SignIn", () => {
     expect(screen.getByText("10.35.4.100 slurmdeck.local")).toBeInTheDocument();
   });
 
+  it("puts the session hostname on the same hosts-file line", async () => {
+    mockFetch({ "GET /api/public/apply-open": { body: { open: false } },
+                "GET /api/public/site": { body: { hostname: "slurmdeck.local", lan_addr: "10.35.4.100",
+                                                  session_hostname: "sessions.slurmdeck.local" } } });
+    render(<SignIn />);
+    expect(await screen.findByText("10.35.4.100 slurmdeck.local sessions.slurmdeck.local"))
+      .toBeInTheDocument();
+  });
+
   it("shows no hint when the address isn't configured", async () => {
     mockFetch({ "GET /api/public/apply-open": { body: { open: false } },
                 "GET /api/public/site": { body: { hostname: "slurmdeck.local", lan_addr: "" } } });

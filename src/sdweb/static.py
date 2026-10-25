@@ -8,7 +8,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 
 # Paths the API and live sockets own; never answered with index.html.
-API_PREFIXES = ("api", "ws", "notebook", "tensorboard", "terminal")
+API_PREFIXES = ("api", "ws", "notebook", "tensorboard", "terminal", "_sd")
 
 
 def mount(app: FastAPI, path: str) -> None:

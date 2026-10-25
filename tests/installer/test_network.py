@@ -142,3 +142,10 @@ def test_the_mdns_alias_unit_publishes_the_site_name_and_address():
     assert "ExecStart=/usr/bin/avahi-publish -a -R ${PUBLIC_HOSTNAME} ${LAN_ADDR}" in unit
     assert "EnvironmentFile=/etc/slurm-deck-web/gpu-helper.env" in unit
     assert "Restart=always" in unit
+
+
+def test_the_sessions_mdns_unit_publishes_the_session_name():
+    unit = (GPUHOST / "sd-mdns-sessions.service").read_text()
+    assert "ExecStart=/usr/bin/avahi-publish -a -R ${SESSION_HOSTNAME} ${LAN_ADDR}" in unit
+    assert "EnvironmentFile=/etc/slurm-deck-web/gpu-helper.env" in unit
+    assert "Restart=always" in unit

@@ -37,6 +37,16 @@ def test_settings_read_site_values():
     assert (s.cluster_tz, s.public_hostname, s.secure_cookies) == ("Asia/Colombo",
                                                                    "deck.example.org", False)
     assert (s.mail_provider, s.smtp_port) == ("smtp", 2525)
+    assert s.session_hostname == "sessions.deck.example.org"
+
+
+def test_session_hostname_is_its_own_name():
+    s = load_settings({"SD_DATABASE_URL": "postgresql://db/sd",
+                       "SD_SESSION_HOSTNAME": "Jobs.Example.Org"})
+    assert s.session_hostname == "jobs.example.org"
+    with pytest.raises(ValueError, match="SD_SESSION_HOSTNAME"):
+        load_settings({"SD_DATABASE_URL": "postgresql://db/sd",
+                       "SD_PUBLIC_HOSTNAME": "deck.x.org", "SD_SESSION_HOSTNAME": "deck.x.org"})
 
 
 def _admin(pg_db):

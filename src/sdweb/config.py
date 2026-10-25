@@ -48,6 +48,9 @@ class WebSettings:
     session_ports: tuple[int, int] = (8800, 8999)
     env_spec_dir: str = "/app/cluster/envs"
     lan_addr: str = ""   # the address users reach, for the hosts-file hint
+    # Interactive sessions are served from this hostname, never the app's own,
+    # so a job's pages can't reach the platform cookie or API.
+    session_hostname: str = ""
 
 
 def _int(env: Mapping[str, str], key: str, default: int) -> int:
@@ -95,10 +98,14 @@ def load_settings(env: Mapping[str, str]) -> WebSettings:
     mail = env.get("SD_MAIL_PROVIDER") or "none"
     if mail not in MAIL_PROVIDERS:
         raise ValueError(f"SD_MAIL_PROVIDER must be one of {', '.join(MAIL_PROVIDERS)}")
+    public_hostname = env.get("SD_PUBLIC_HOSTNAME") or "slurmdeck.local"
+    session_hostname = (env.get("SD_SESSION_HOSTNAME") or f"sessions.{public_hostname}").lower()
+    if session_hostname == public_hostname.lower():
+        raise ValueError("SD_SESSION_HOSTNAME must differ from SD_PUBLIC_HOSTNAME")
     return WebSettings(
         database_url=database_url,
         agent_socket=env.get("SD_AGENT_SOCKET") or "/run/slurm-deck-web/agent.sock",
-        public_hostname=env.get("SD_PUBLIC_HOSTNAME") or "slurmdeck.local",
+        public_hostname=public_hostname,
         cluster_name=env.get("SD_CLUSTER_NAME") or "Slurm Deck",
         cluster_tz=tz,
         mail_provider=mail,
@@ -128,4 +135,5 @@ def load_settings(env: Mapping[str, str]) -> WebSettings:
         session_ports=_port_range(env),
         env_spec_dir=env.get("SD_ENV_SPEC_DIR") or "/app/cluster/envs",
         lan_addr=env.get("SD_LAN_ADDR", ""),
+        session_hostname=session_hostname,
     )

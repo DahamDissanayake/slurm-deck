@@ -125,6 +125,8 @@ def render(name: str, values: dict[str, Any]) -> str:
 # (key, prompt, default); no default means the answer is required.
 SITE_FIELDS: list[tuple[str, str, str | None]] = [
     ("public_hostname", "Public hostname users open", None),
+    ("session_hostname", "Hostname for notebook, TensorBoard and terminal sessions "
+     "(blank: sessions.<public hostname>)", ""),
     ("gpu_host", "GPU host address (on virbr0)", None),
     ("login_addr", "Login node address", None),
     ("lan_addr", "LAN address users reach", None),
@@ -180,6 +182,12 @@ def site_values(ctx: Ctx, given: dict[str, Any] | None = None) -> None:
             raise InstallError(f"site_values: no answer for {key} ({prompt}); "
                                "give it in the --answers file")
         answers[key] = value
+    # Sessions get their own name, never the app's (SLURM-56): a job's pages
+    # must not share an origin with the platform.
+    if not str(answers.get("session_hostname") or "").strip():
+        answers["session_hostname"] = f"sessions.{answers['public_hostname']}"
+    if answers["session_hostname"].lower() == str(answers["public_hostname"]).lower():
+        raise InstallError("site_values: the session hostname must differ from the public one")
     if ctx.login.run(f"mountpoint -q {shlex.quote(answers['nfs_root'])}", check=False).returncode:
         raise InstallError(f"site_values: {answers['nfs_root']} is not a mounted share")
     ctx.state.data["answers"] = answers
@@ -336,9 +344,9 @@ def network(ctx: Ctx) -> bool:
         ctx.log("network: avahi-utils isn't installed on the GPU host, so the .local name "
                 "isn't announced; users can use the hosts-file line instead")
         return True
-    gpu.write("/etc/systemd/system/sd-mdns-alias.service",
-              (src / "sd-mdns-alias.service").read_text())
-    gpu.run("systemctl daemon-reload && systemctl enable --now sd-mdns-alias")
+    for unit in ("sd-mdns-alias", "sd-mdns-sessions"):
+        gpu.write(f"/etc/systemd/system/{unit}.service", (src / f"{unit}.service").read_text())
+    gpu.run("systemctl daemon-reload && systemctl enable --now sd-mdns-alias sd-mdns-sessions")
     return True
 
 
@@ -349,7 +357,7 @@ def summary(ctx: Ctx) -> None:
     ctx.log(f"\nSlurm Deck is installed.\n  Open:        https://{a['public_hostname']}\n"
             f"  CA cert:     https://{a['public_hostname']}/ca.crt (install it once per device)\n"
             f"  If the name does not resolve, add to the hosts file:\n"
-            f"               {a['lan_addr']} {a['public_hostname']}\n"
+            f"               {a['lan_addr']} {a['public_hostname']} {a['session_hostname']}\n"
             f"  Cutover:     docs/runbooks/cutover.md")
 
 

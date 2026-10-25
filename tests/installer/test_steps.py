@@ -50,6 +50,20 @@ def ctx(tmp_path):
                      accept_small=True, log=lambda msg: None)
 
 
+def test_session_hostname_defaults_and_reaches_every_env_file(ctx):
+    steps.run_all(ctx)
+    assert ctx.state.data["answers"]["session_hostname"] == "sessions.deck.example.org"
+    written = " ".join(ctx.login.inputs) + " ".join(ctx.gpu.inputs)
+    assert "SD_SESSION_HOSTNAME=sessions.deck.example.org" in written   # web.env, compose env
+    assert "SESSION_HOSTNAME=sessions.deck.example.org" in written      # gpu-helper.env
+
+
+def test_session_hostname_must_differ_from_the_public_one(ctx):
+    ctx.state.data["answers"]["session_hostname"] = "deck.example.org"
+    with pytest.raises(steps.InstallError, match="session hostname"):
+        steps.site_values(ctx)
+
+
 def test_resume_skips_done_steps(ctx):
     ctx.gpu.fail_on = "sudoers"
     with pytest.raises(steps.InstallError):
@@ -76,7 +90,8 @@ def test_templates_never_contain_an_empty_required_value():
               "timezone": "UTC", "mail_provider": "none", "mail_from": "", "web_uid": 1,
               "slurm_account": "default", "slurm_qos": "normal",
               "web_gid": 1, "worker_uid": 2, "worker_gid": 2, "db_password": "x",
-              "agent_db_password": "y", "compose_dir": "/srv/deploy"}
+              "agent_db_password": "y", "compose_dir": "/srv/deploy",
+              "session_hostname": "sessions.deck.example.org"}
     for tmpl in sorted(steps.TEMPLATES.glob("*.tmpl")):
         assert not re.search(r"=$", steps.render(tmpl.name, {**values, "mail_from": "x"}), re.M)
         with pytest.raises(steps.InstallError):
@@ -100,7 +115,8 @@ def test_secret_files_get_the_documented_modes(ctx):
 def test_network_waits_for_a_hand_made_forward_and_installs_the_scripts_on_the_gpu_host(ctx):
     assert steps.network(ctx) is True
     assert any("/usr/local/lib/slurm-deck/sd-web-forward.sh --apply" in c for c in ctx.gpu.cmds)
-    assert any("systemctl enable --now sd-mdns-alias" in c for c in ctx.gpu.cmds)
+    assert any("systemctl enable --now sd-mdns-alias sd-mdns-sessions" in c
+               for c in ctx.gpu.cmds)
     ctx.gpu.codes = {"sd-web-forward.sh --apply": 2}   # the 2225 forward wasn't found
     assert steps.network(ctx) is False
 

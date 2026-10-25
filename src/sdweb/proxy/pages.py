@@ -27,24 +27,37 @@ def _page(title: str, body: str, status: int, refresh: int | None = None) -> HTM
     return HTMLResponse(html, status_code=status, headers={"Cache-Control": "no-store"})
 
 
-def starting() -> HTMLResponse:
+def starting(home: str = "") -> HTMLResponse:
     return _page("Starting your session…", "<p>This page refreshes by itself.</p>", 200, 3)
 
 
-def ended() -> HTMLResponse:
-    return _page("This session has ended.", '<p><a href="/jobs">Back to your jobs</a></p>', 200)
+def _back(home: str, path: str = "/jobs", label: str = "Back to your jobs") -> str:
+    """A link into the app; absolute (home) when the page is on the session origin."""
+    return f'<p><a href="{escape(home + path, quote=True)}">{escape(label)}</a></p>'
 
 
-def forbidden() -> HTMLResponse:
-    return _page("This session belongs to someone else.",
-                 '<p><a href="/jobs">Back to your jobs</a></p>', 403)
+def ended(home: str = "") -> HTMLResponse:
+    return _page("This session has ended.", _back(home), 200)
 
 
-def not_found() -> HTMLResponse:
-    return _page("There is no such session.", '<p><a href="/jobs">Back to your jobs</a></p>', 404)
+def forbidden(home: str = "") -> HTMLResponse:
+    return _page("This session belongs to someone else.", _back(home), 403)
 
 
-def not_responding(job_id: str) -> HTMLResponse:
-    link = f'/jobs/{escape(job_id, quote=True)}'
+def not_found(home: str = "") -> HTMLResponse:
+    return _page("There is no such session.", _back(home), 404)
+
+
+def not_responding(job_id: str, home: str = "") -> HTMLResponse:
     return _page("The session isn't responding. It may still be starting, or it has stopped.",
-                 f'<p><a href="{link}">See the job and its log</a></p>', 502)
+                 _back(home, f"/jobs/{job_id}", "See the job and its log"), 502)
+
+
+def reopen(home: str) -> HTMLResponse:
+    """The session origin without a live ticket, for a request that can't just
+    be redirected (anything but a GET)."""
+    return _page("Open this session from Slurm Deck again.", _back(home), 403)
+
+
+def bad_link(home: str) -> HTMLResponse:
+    return _page("This link doesn't open a session.", _back(home), 400)

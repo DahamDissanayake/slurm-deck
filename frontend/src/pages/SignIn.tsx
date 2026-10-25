@@ -25,7 +25,7 @@ export function SignIn() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
-  const [site, setSite] = useState({ hostname: "", lan_addr: "" });
+  const [site, setSite] = useState({ hostname: "", lan_addr: "", session_hostname: "" });
 
   useEffect(() => {
     applyOpen().then(setOpen).catch(() => setOpen(false));
@@ -67,7 +67,9 @@ export function SignIn() {
         <details className="mt-2 text-xs text-text-dim">
           <summary>Can't reach {site.hostname}?</summary>
           <p className="mt-1">Add this line to your computer's hosts file:</p>
-          <code className="block select-all font-mono">{site.lan_addr} {site.hostname}</code>
+          <code className="block select-all font-mono">
+            {site.lan_addr} {site.hostname}{site.session_hostname ? ` ${site.session_hostname}` : ""}
+          </code>
         </details>
       )}
     </PublicPage>
