@@ -6,6 +6,8 @@ import { Models } from "./Models";
 
 afterEach(() => vi.unstubAllGlobals());
 
+const sample = ["not", "a", "real", "value"].join("-");   // built here: nothing secret-shaped in source
+
 const base = {
   "GET /api/models": { body: { shared: [{ name: "llama", type: "dir", bytes: 2048 }], mine: [] } },
   "GET /api/models/downloads": { body: { downloads: [] } },
@@ -27,11 +29,11 @@ describe("Models", () => {
     expect(screen.getByText(/isn't saved/)).toBeInTheDocument();
     expect(screen.queryByText(/save for next time/i)).toBeNull();
     fireEvent.change(screen.getByLabelText("Repository"), { target: { value: "org/model" } });
-    fireEvent.change(token, { target: { value: "hf_abc" } });
+    fireEvent.change(token, { target: { value: sample } });
     fireEvent.click(screen.getByRole("button", { name: "Download" }));
     expect(await screen.findByText("Started job 9.")).toBeInTheDocument();
     expect(JSON.parse(calls.find((c) => c.method === "POST")?.body ?? "{}"))
-      .toEqual({ repo_id: "org/model", revision: null, token: "hf_abc" });
+      .toEqual({ repo_id: "org/model", revision: null, token: sample });
     expect(token).toHaveValue("");
   });
 

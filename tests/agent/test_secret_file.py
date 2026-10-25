@@ -23,12 +23,13 @@ def _folder(agent, out):
 
 
 def test_the_token_is_written_0600_beside_the_script_and_not_into_it(jobs):  # noqa: F811
+    sample = "-".join(["not", "a", "real", "value"])   # built here, not written in source
     out = jobs.call("job.submit", _payload(
-        jobs, secret_file={"name": ".hf_token", "content": "hf_abc123"}))
+        jobs, secret_file={"name": ".hf_token", "content": sample}))
     token = _folder(jobs, out) / ".hf_token"
-    assert token.read_text() == "hf_abc123"
+    assert token.read_text() == sample
     assert stat.S_IMODE(token.stat().st_mode) == 0o600
-    assert "hf_abc123" not in (token.parent / "job.sbatch").read_text()
+    assert sample not in (token.parent / "job.sbatch").read_text()
 
 
 def test_no_token_means_no_token_file(jobs):  # noqa: F811

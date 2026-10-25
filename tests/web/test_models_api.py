@@ -10,7 +10,7 @@ pytestmark = pytest.mark.pg
 
 SHARED = "/shared/models"
 MINE = "/shared/users/amasha/models"
-TOKEN = "hf_secrettoken123"
+SAMPLE = "-".join(["not", "a", "real", "value"])   # built here: nothing secret-shaped in source
 
 
 class ModelsAgent:
@@ -55,13 +55,14 @@ def test_library_lists_shared_and_my_models_with_sizes(models):
 
 def test_the_token_goes_to_the_job_folder_only(models):
     app, agent, c = models
-    assert _submit(c, token=f"  {TOKEN} ").status_code == 201
+    assert _submit(c, token=f"  {SAMPLE} ").status_code == 201
     _, payload = next(x for x in agent.calls if x[0] == "job.submit")
-    assert payload["secret_file"] == {"name": ".hf_token", "content": TOKEN}
-    assert TOKEN not in payload["script"]
+    assert payload["secret_file"] == {"name": ".hf_token", "content": SAMPLE}
+    assert SAMPLE not in payload["script"]
     assert f"{MINE}/meta-llama--Llama-3.1-8B" in payload["script"]
     with app.state.sessionmaker() as s:
-        assert s.get(Job, "700").kind == "model_download" and TOKEN not in s.get(Job, "700").script
+        job = s.get(Job, "700")
+        assert job.kind == "model_download" and SAMPLE not in job.script
         audit = s.scalars(select(AuditEvent).where(AuditEvent.action == "model.download")).one()
         assert audit.detail == {"job_id": "700", "with_token": True}
 
