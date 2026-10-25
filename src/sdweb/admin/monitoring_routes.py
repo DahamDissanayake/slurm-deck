@@ -34,7 +34,6 @@ def _when(text: str | None, what: str) -> datetime | None:
 def _page(page: int, size: int) -> tuple[int, int]:
     return max(page, 1), min(max(size, 1), MAX_PAGE)
 
-
 @router.get("/audit")
 def audit(ctx: Admin, db: Db, actor: str = "", action: str = "",
           from_: Annotated[str | None, Query(alias="from")] = None, to: str | None = None,
@@ -79,18 +78,15 @@ def _mail_status(m: OutboxMessage) -> str:
 @router.get("/mail-log")
 def mail_log(ctx: Admin, db: Db, status: str = "", page: int = 1, page_size: int = 50) -> dict:
     page, size = _page(page, page_size)
-    q = select(OutboxMessage)
-    if status == "sent":
-        q = q.where(OutboxMessage.sent_at.is_not(None))
-    elif status == "disabled":
-        q = q.where(OutboxMessage.sent_at.is_(None), OutboxMessage.last_error == MAIL_DISABLED)
-    elif status == "failed":
-        q = q.where(OutboxMessage.sent_at.is_(None), OutboxMessage.last_error.is_not(None),
-                    OutboxMessage.last_error != MAIL_DISABLED)
-    elif status == "pending":
-        q = q.where(OutboxMessage.sent_at.is_(None), OutboxMessage.last_error.is_(None))
-    elif status:
+    m = OutboxMessage
+    unsent = [m.sent_at.is_(None)]
+    filters = {"": [], "sent": [m.sent_at.is_not(None)],
+               "disabled": [*unsent, m.last_error == MAIL_DISABLED],
+               "failed": [*unsent, m.last_error.is_not(None), m.last_error != MAIL_DISABLED],
+               "pending": [*unsent, m.last_error.is_(None)]}
+    if status not in filters:
         raise ApiError(422, "bad_status", message="Use sent, pending, failed or disabled.")
+    q = select(m).where(*filters[status])
     rows = db.scalars(q.order_by(OutboxMessage.id.desc()).limit(size + 1)
                       .offset((page - 1) * size)).all()
     return {"page": page, "has_more": len(rows) > size,

@@ -1,14 +1,27 @@
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 
 import { type AgentEvent, type AuditRow, type MailRow, adminOps } from "../../api/adminOps";
-import { cluster, type Services } from "../../api/cluster";
 import { Panel } from "../../components/Panel";
 import { inputClass, smallButton } from "./AdminLayout";
+import { ServiceUnits } from "./Cluster";
 
 type Tab = "audit" | "agent" | "mail" | "services";
 const TABS: [Tab, string][] = [["audit", "Audit"], ["agent", "deck-agent log"],
                                ["mail", "Mail log"], ["services", "Services"]];
 const when = (iso: string) => new Date(iso).toLocaleString();
+
+function Table({ head, rows }: { head: string[]; rows: ReactNode[][] }) {
+  return (
+    <table className="w-full text-left text-sm">
+      <thead className="text-text-dim"><tr>{head.map((h) => <th key={h}>{h}</th>)}</tr></thead>
+      <tbody>
+        {rows.map((r, i) => (
+          <tr key={i} className="border-t border-border">{r.map((c, j) => <td key={j}>{c}</td>)}</tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
 
 function Pager({ page, more, go }: { page: number; more: boolean; go: (p: number) => void }) {
   return (
@@ -43,19 +56,9 @@ function Audit() {
         {filter("from", "From (YYYY-MM-DD)")}{filter("to", "To")}
       </div>
       {error && <p role="alert" className="text-danger">{error}</p>}
-      <table className="w-full text-left text-sm">
-        <thead className="text-text-dim"><tr><th>When</th><th>Who</th><th>Action</th><th>Target</th>
-          <th>Result</th><th>From</th></tr></thead>
-        <tbody>
-          {rows.map((e) => (
-            <tr key={e.id} className="border-t border-border">
-              <td>{when(e.ts)}</td>
-              <td>{e.actor ?? "system"}{e.acting_admin ? ` (via ${e.acting_admin})` : ""}</td>
-              <td className="font-mono">{e.action}</td><td>{e.target}</td><td>{e.result}</td><td>{e.source}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <Table head={["When", "Who", "Action", "Target", "Result", "From"]} rows={rows.map((e) => [
+        when(e.ts), `${e.actor ?? "system"}${e.acting_admin ? ` (via ${e.acting_admin})` : ""}`,
+        <code key="a">{e.action}</code>, e.target, e.result, e.source])} />
       <Pager page={page} more={more} go={setPage} />
     </>
   );
@@ -64,19 +67,8 @@ function Audit() {
 function AgentLog() {
   const [events, setEvents] = useState<AgentEvent[]>([]);
   useEffect(() => { adminOps.agentLog().then((r) => setEvents(r.events), () => setEvents([])); }, []);
-  return (
-    <table className="w-full text-left text-sm">
-      <thead className="text-text-dim"><tr><th>When</th><th>Who</th><th>Verb</th><th>Target</th><th>Result</th></tr></thead>
-      <tbody>
-        {events.map((e, i) => (
-          <tr key={i} className="border-t border-border">
-            <td>{when(e.ts)}</td><td>{e.actor ?? "worker"}</td><td className="font-mono">{e.verb}</td>
-            <td>{e.target}</td><td>{e.result}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
+  return <Table head={["When", "Who", "Verb", "Target", "Result"]} rows={events.map((e) => [
+    when(e.ts), e.actor ?? "worker", e.verb, e.target, e.result])} />;
 }
 
 function MailLog() {
@@ -95,32 +87,11 @@ function MailLog() {
           {["", "sent", "pending", "failed", "disabled"].map((s) => <option key={s} value={s}>{s || "all"}</option>)}
         </select>
       </label>
-      <table className="w-full text-left text-sm">
-        <thead className="text-text-dim"><tr><th>When</th><th>To</th><th>Subject</th><th>Status</th><th /></tr></thead>
-        <tbody>
-          {rows.map((m) => (
-            <tr key={m.id} className="border-t border-border">
-              <td>{when(m.created_at)}</td><td>{m.to}</td><td>{m.subject}</td><td>{m.status}</td>
-              <td className="text-danger">{m.status === "failed" ? m.error : ""}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <Table head={["When", "To", "Subject", "Status", "Error"]} rows={rows.map((m) => [
+        when(m.created_at), m.to, m.subject, m.status, m.status === "failed" ? m.error : ""])} />
       <Pager page={page} more={more} go={setPage} />
     </>
   );
-}
-
-function ServiceList() {
-  const [s, setS] = useState<Services | null>(null);
-  useEffect(() => { cluster.services().then(setS, () => setS(null)); }, []);
-  if (!s) return <p className="text-text-dim">Loading…</p>;
-  const list = (title: string, units: Record<string, string>) => (
-    <div><h3 className="mb-1 text-sm text-text-dim">{title}</h3>
-      <ul className="text-sm">{Object.entries(units).map(([u, v]) => (
-        <li key={u}><span className={v === "active" ? "text-ok" : "text-danger"}>●</span> {u}: {v}</li>))}</ul></div>
-  );
-  return <div className="grid gap-4 sm:grid-cols-2">{list("Login node", s.login)}{list("GPU host", s.gpu)}</div>;
 }
 
 /** Audit trail, deck-agent's own log, the mail log and service health. */
@@ -136,7 +107,7 @@ export function Monitoring() {
         ))}
       </div>
       {tab === "audit" && <Audit />}{tab === "agent" && <AgentLog />}
-      {tab === "mail" && <MailLog />}{tab === "services" && <ServiceList />}
+      {tab === "mail" && <MailLog />}{tab === "services" && <ServiceUnits />}
     </Panel>
   );
 }

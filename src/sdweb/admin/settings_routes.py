@@ -43,8 +43,7 @@ def _whole(lo: int, hi: int) -> Callable[[Any, int | None], int]:
 
 
 def _cap(v: Any, pmax: int | None) -> int:
-    top = pmax // 3600 if pmax else 24 * 30   # never above the partition's longest job
-    return _whole(1, max(top, 1))(v, pmax)
+    return _whole(1, max(pmax // 3600 if pmax else 24 * 30, 1))(v, pmax)   # <= the longest job
 
 
 def _time_limit(v: Any, pmax: int | None) -> str:
@@ -53,18 +52,15 @@ def _time_limit(v: Any, pmax: int | None) -> str:
         raise ValueError("Use HH:MM:SS, like 08:00:00.")
     secs = int(m[1]) * 3600 + int(m[2]) * 60 + int(m[3])
     if secs < 60 or (pmax and secs > pmax):
-        raise ValueError("The time limit must be at least a minute and no more than the "
-                         f"partition's longest job ({pmax // 3600 if pmax else '?'} h).")
+        raise ValueError("The time limit must be between a minute and the partition's longest job.")
     return v
 
 
 def _text(limit: int) -> Callable[[Any, int | None], str | None]:
     def check(v: Any, pmax: int | None) -> str | None:
-        if v is None or (isinstance(v, str) and not v.strip()):
-            return None
-        if not isinstance(v, str) or len(v) > limit:
+        if not isinstance(v, str | None) or len(v or "") > limit:
             raise ValueError(f"Use at most {limit} characters.")
-        return v.strip()
+        return (v or "").strip() or None
     return check
 
 
