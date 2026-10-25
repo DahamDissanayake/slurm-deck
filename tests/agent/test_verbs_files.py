@@ -1,6 +1,7 @@
 """fs.* verbs: fsops as the caller, admin access through sd-ops, uploads with
 grants, the free-space rule, streaming, and the staging janitor."""
 
+import json
 import os
 import pwd
 import subprocess
@@ -99,8 +100,6 @@ def test_upload_chunks_finalize_and_offsets(fsagent):
 
 
 def test_upload_chunk_audit_names_grant_user_and_upload(fsagent):
-    import json
-
     a = fsagent
     client = AgentClient(a.path)
     grant = _begin(a)
