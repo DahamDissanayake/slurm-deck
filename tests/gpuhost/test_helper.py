@@ -19,10 +19,19 @@ from sdcore.names import RESERVED, USERNAME_RE  # noqa: E402
 HELPER = Path(__file__).resolve().parents[2] / "gpuhost" / "sd-gpu-helper"
 
 
-def run_helper(cmd: str, root: Path | None = None) -> subprocess.CompletedProcess:
+WEB = ["webusers", "gpuusers"]
+
+
+def run_helper(cmd: str, root: Path | None = None,
+               accounts: dict | None = None) -> subprocess.CompletedProcess:
+    """accounts: the host's accounts as {name: {"uid": n, "groups": [...]}}; the
+    helper reads them instead of the test machine's (none by default)."""
     args = [sys.executable, str(HELPER), "--dry-run"]
     if root is not None:
         args += ["--root", str(root)]
+        fake = root / "accounts.json"
+        fake.write_text(json.dumps(accounts or {}))
+        args += ["--fake-accounts", str(fake)]
     env = {**os.environ, "SSH_ORIGINAL_COMMAND": cmd}
     return subprocess.run(args, capture_output=True, text=True, env=env)
 
@@ -54,12 +63,68 @@ def test_service_status_reports_only_the_allowed_units():
 
 
 def test_uid_of_another_account_refused(tmp_path):
-    import pwd
+    taken = {"hassan": {"uid": 30000, "groups": WEB}}
+    assert run_helper("create-account other-name 30000", tmp_path, taken).returncode == 2
 
-    me = pwd.getpwuid(os.getuid())
-    if os.getuid() < 1000:
-        pytest.skip("needs a non-system test user")
-    assert run_helper(f"create-account other-name {me.pw_uid}", tmp_path).returncode == 2
+
+# --- only web accounts (SLURM-49 finding 4) -------------------------------------------------
+
+SYSADMIN = {"dahamadmin": {"uid": 1002, "groups": ["gpuadmins", "webusers", "gpuusers"]}}
+SHELL_USER = {"tuser": {"uid": 2000, "groups": ["gpuusers", "docker"]}}
+SUDOER = {"ops": {"uid": 1003, "groups": ["sudo", "webusers"]}}
+WEB_USER = {"amasha": {"uid": 23456, "groups": WEB}}
+
+
+@pytest.mark.parametrize("who", [SYSADMIN, SHELL_USER, SUDOER])
+@pytest.mark.parametrize("op", ["delete-account", "purge", "archive"])
+def test_mutating_commands_refuse_accounts_that_are_not_web_accounts(tmp_path, who, op):
+    name = next(iter(who))
+    for sub in ("users", "jobs"):
+        (tmp_path / sub / name).mkdir(parents=True)
+    r = run_helper(f"{op} {name}", tmp_path, who)
+    assert r.returncode == 2, (op, name, r.stdout, r.stderr)
+    assert "isn't a web account" in _json(r)["error"]
+    assert "+ " not in r.stderr                         # nothing was run
+    assert (tmp_path / "users" / name).is_dir()          # nothing was moved
+
+
+@pytest.mark.parametrize("op", ["delete-account", "purge", "archive"])
+def test_mutating_commands_accept_a_web_account(tmp_path, op):
+    for sub in ("users", "jobs"):
+        (tmp_path / sub / "amasha").mkdir(parents=True)
+    r = run_helper(f"{op} amasha", tmp_path, WEB_USER)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+@pytest.mark.parametrize("who", [SYSADMIN, SHELL_USER])
+def test_create_account_never_takes_over_an_existing_account(tmp_path, who):
+    name, acct = next(iter(who.items()))
+    r = run_helper(f"create-account {name} {acct['uid']}", tmp_path, who)
+    assert r.returncode == 2 and "isn't a web account" in _json(r)["error"]
+    assert "passwd -l" not in r.stderr and "chown" not in r.stderr
+
+
+def test_create_account_rerun_for_an_existing_web_account(tmp_path):
+    r = run_helper("create-account amasha 23456", tmp_path, WEB_USER)
+    assert r.returncode == 0, r.stderr
+    assert "groupadd" not in r.stderr and "+ passwd -l amasha" in r.stderr
+
+
+def test_create_folders_refuses_an_existing_non_web_account(tmp_path):
+    r = run_helper("create-folders tuser 2000", tmp_path, SHELL_USER)
+    assert r.returncode == 2 and "mkdir" not in r.stderr
+
+
+def test_purge_after_the_account_is_gone_refuses_folders_another_account_owns(tmp_path):
+    """No account named amasha any more, but users/amasha is owned by a UID that
+    belongs to someone else: removing it would remove their files."""
+    for sub in ("users", "jobs"):
+        (tmp_path / sub / "amasha").mkdir(parents=True)
+    owner = {"someone": {"uid": os.getuid(), "groups": ["gpuusers"]}}
+    for op in ("purge", "archive"):
+        r = run_helper(f"{op} amasha", tmp_path, owner)
+        assert r.returncode == 2 and "belongs to someone" in _json(r)["error"]
+    assert (tmp_path / "users" / "amasha").is_dir()
 
 
 def test_create_account_commands(tmp_path):
