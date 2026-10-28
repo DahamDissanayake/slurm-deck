@@ -153,7 +153,8 @@ group::rwx
 other::r-x
 default:user::rwx
 default:group::rwx
-default:group:gpuadmins:rwx
+default:group:{admin}:rwx
+default:group:gpuusers:rwx
 default:mask::rwx
 default:other::rwx
 """
@@ -161,7 +162,9 @@ default:other::rwx
 
 def _getfacl_fake(body: str) -> str:
     # The real getfacl takes the directory last; print the ACL once for it.
-    return f'd="${{@: -1}}"; cat <<EOT\n{body.replace("{d}", "$d")}EOT'
+    # {admin} is the test user's group, which stands in for gpuadmins.
+    body = body.replace("{d}", "$d").replace("{admin}", _group())
+    return f'd="${{@: -1}}"; cat <<EOT\n{body}EOT'
 
 
 def test_shared_areas_cover_templates_miniforge_and_training_scripts(tmp_path):
@@ -183,22 +186,23 @@ def test_shared_areas_cover_templates_miniforge_and_training_scripts(tmp_path):
 def test_shared_areas_check_reports_writable_default_acls(tmp_path):
     root = _share(tmp_path)
     bindir = _fake_bin(tmp_path, {"getfacl": _getfacl_fake(LIVE_ACL), "setfacl": ""})
-    env = {**_area_env(root), "ADMIN_GROUP": "gpuadmins"}
-    r = _run("shared-areas.sh", ["--check"], bindir, **env)
+    r = _run("shared-areas.sh", ["--check"], bindir, **_area_env(root))
     assert r.returncode == 0, r.stderr
     models = next(line for line in r.stdout.splitlines() if line.startswith("models:"))
-    # default:group:: and default:other:: grant write; the gpuadmins entry may.
-    assert "default-acl=2" in models
+    # default:group::, default:group:gpuusers and default:other:: grant write;
+    # the admin group's entry may.
+    assert "default-acl=3" in models
     assert "setfacl" not in _calls(tmp_path)
 
 
 def test_shared_areas_check_reports_clean_default_acls_as_zero(tmp_path):
     root = _share(tmp_path)
     clean = LIVE_ACL.replace("default:group::rwx", "default:group::r-x") \
-                    .replace("default:other::rwx", "default:other::r-x")
+                    .replace("default:other::rwx", "default:other::r-x") \
+                    .replace("default:group:gpuusers:rwx\n", "")
     bindir = _fake_bin(tmp_path, {"getfacl": _getfacl_fake(clean), "setfacl": ""})
-    r = _run("shared-areas.sh", ["--check"], bindir,
-             **{**_area_env(root), "ADMIN_GROUP": "gpuadmins"})
+    r = _run("shared-areas.sh", ["--check"], bindir, **_area_env(root))
+    assert r.returncode == 0, r.stderr
     assert "default-acl=0" in r.stdout
 
 
