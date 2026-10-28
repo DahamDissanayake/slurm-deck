@@ -14,13 +14,14 @@ scenario 12 (drain and resume) only runs when you allow it.
 Run it on the login node as the admin user (it reads one-time links from the
 outbox with `sudo docker exec`), from a checkout outside `/opt`.
 
-1. **Throwaway admin.** In `<install>/deploy`:
+1. **Throwaway admin.** List it in deck-agent's admins file first (deck-agent
+   refuses `account.create` from anyone not listed), then, in `<install>/deploy`:
 
    ```bash
-   sudo docker compose run --rm web python -m sdweb.cli create-admin --force \
-     --email 'delivered+sdtestadmin@resend.dev' --full-name 'Acceptance admin' \
-     --username sdtestadmin
    echo sdtestadmin | sudo tee -a /etc/slurm-deck-web/admins
+   sudo docker compose run --rm -T web python -m sdweb.cli create-admin --force \
+     --email 'delivered+sdtestadmin@resend.dev' --full-name 'Acceptance admin' \
+     --username sdtestadmin </dev/null
    ```
 
    Open the printed link's token with `POST /api/auth/password/set` (or in a
@@ -49,11 +50,15 @@ outbox with `sudo docker exec`), from a checkout outside `/opt`.
 
    Other settings (size of the scenario 2 upload, waits, `SD_E2E_DISRUPTIVE=1`
    for scenario 12) are listed in `tests/e2e/conftest.py`. Job scenarios wait
-   for the node, so run them when it isn't full.
+   for the node, so run them when it isn't full. Run pytest in the foreground
+   (or in `tmux`): a background job from a non-interactive shell ignores
+   Ctrl-C, and only an interrupted run still cancels its jobs and deletes its
+   accounts. Each run needs a new `SD_E2E_PREFIX`, because a deleted
+   account's username is never reused.
 
 4. **Clean up.** The fixture deletes every account it made (with their files,
    Linux users on both nodes, Slurm associations and jobs). Then:
-   - remove the archive scenario 14 leaves: `<nfs export>/users/sdtestdel.offboarded`
+   - remove the archive scenario 14 leaves: `<nfs export>/users/<prefix>del.offboarded`
      (GPU host, as root);
    - remove `sdtestadmin` from `/etc/slurm-deck-web/admins`;
    - a real admin deletes `sdtestadmin` in Admin → Accounts (an admin can't
@@ -85,3 +90,31 @@ Fill in date, who and result for each run.
 | Certificate | After trusting the site CA, the app and a session tab open with no certificate warning. | |
 | Dark and light | Switch the theme; every page reads well in both. | |
 | New tabs | Open on a notebook, TensorBoard and terminal opens each in a new tab. | |
+
+## Run log
+
+### 2026-10-29, live install (login node, `main` at 3fd5fc8)
+
+Run from the login node with `SD_E2E_CONNECT=127.0.0.1` and a 2 GB stand-in for
+scenario 2; scenario 12 run only while the queue was empty.
+
+| # | Result |
+|---|---|
+| 2, 3, 9, 10, 11, 12, 14 | PASS |
+| 1, 4, 5, 6, 7 | BLOCKED by a product bug: no job of a web account can start (below) |
+
+Known product bugs found or confirmed by this run:
+
+- **Web accounts' jobs are held at start.** Every platform job script has
+  `#SBATCH --export=NONE`, which makes slurmd load the user's login environment
+  (as `--get-user-env` does). Web accounts have the shell `/usr/sbin/nologin`, so
+  this fails: slurmd logs `error: Failed to get current user environment
+  variables` and the job is held with `user_env_retrieval_failed_requeued_held`
+  (`su - <web user> -c env` answers "This account is currently not available").
+- **`--mail-user` scripts are refused at submit.** `job.submit` in deck-agent calls
+  `validate_sbatch` without `registered_email`. The scenario jobs submit with
+  mail off to avoid it.
+
+Manual checks: **waiting for a person** (8, 13, certificate, dark/light, new
+tabs). The throwaway admin `sdtestadmin` is out of the admins file and is
+**waiting for a real admin to delete it** in Admin → Accounts.
