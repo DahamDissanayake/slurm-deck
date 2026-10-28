@@ -22,7 +22,7 @@ ANSWERS = {
 }
 REPLIES = {r"^id -u sdweb": "990\n", r"^id -g sdweb": "990\n", r"^id -u sdworker": "991\n",
            r"^id -g sdworker": "991\n", r"cat .*\.pub": "ssh-ed25519 AAAAkey deck-agent\n",
-           r" ping$": '{"ok": true}\n'}
+           r" ping$": '{"ok": true}\n', r"^getent group sd-agent \| cut": "985\n"}
 
 
 class FakeTarget(steps.Target):
@@ -69,11 +69,39 @@ def test_resume_skips_done_steps(ctx):
     with pytest.raises(steps.InstallError):
         steps.run_all(ctx)
     assert ctx.state.data["done"] == ["preflight", "site_values", "accounts_login"]
-    first = [c for c in ctx.login.cmds if "useradd" in c]
-    ctx.gpu.fail_on = None
+    first = [c for c in ctx.gpu.cmds if "useradd" in c]
+    ctx.gpu.fail_on, ctx.login.cmds = None, []
     steps.run_all(ctx)
-    assert [c for c in ctx.login.cmds if "useradd" in c] == first   # no account was redone
+    assert [c for c in ctx.gpu.cmds if "useradd" in c] == first * 2   # only the failed step reran
+    assert not any("nproc" in c for c in ctx.login.cmds)   # preflight stays done
     assert "summary" in ctx.state.data["done"]
+
+
+def test_accounts_login_and_secrets_rerun_even_when_done(ctx):
+    # Both are idempotent, so a fixed installer reaches an existing install.
+    steps.run_all(ctx)
+    ctx.login.cmds, ctx.login.inputs, ctx.gpu.cmds = [], [], []
+    steps.run_all(ctx)
+    cmds = " ".join(ctx.login.cmds)
+    assert "groupadd --system sd-agent" in cmds                 # accounts_login
+    assert "/etc/slurm-deck-web/agent.env" in cmds              # secrets
+    assert "systemctl restart deck-agent" not in cmds           # agent stays done
+    assert ctx.gpu.cmds == []                                   # gpuhost_bootstrap stays done
+
+
+def test_accounts_login_puts_sdweb_and_sdworker_in_the_socket_group(ctx):
+    steps.accounts_login(ctx)
+    cmds = ctx.login.cmds
+    make = cmds.index("getent group sd-agent >/dev/null || groupadd --system sd-agent")
+    assert cmds.index("usermod -aG sd-agent sdweb") > make
+    assert cmds.index("usermod -aG sd-agent sdworker") > make
+
+
+def test_compose_env_and_agent_env_name_the_socket_group(ctx):
+    steps.run_all(ctx)
+    written = " ".join(ctx.login.inputs)
+    assert "SD_AGENT_GID=985" in written
+    assert "SD_AGENT_SOCKET_GROUP=sd-agent" in written
 
 
 def test_check_runs_nothing_and_saves_nothing(ctx, tmp_path):
@@ -90,7 +118,7 @@ def test_templates_never_contain_an_empty_required_value():
               "timezone": "UTC", "mail_provider": "none", "mail_from": "", "web_uid": 1,
               "slurm_account": "default", "slurm_qos": "normal",
               "web_gid": 1, "worker_uid": 2, "worker_gid": 2, "db_password": "x",
-              "agent_db_password": "y", "compose_dir": "/srv/deploy",
+              "agent_db_password": "y", "compose_dir": "/srv/deploy", "agent_gid": 3,
               "session_hostname": "sessions.deck.example.org"}
     for tmpl in sorted(steps.TEMPLATES.glob("*.tmpl")):
         assert not re.search(r"=$", steps.render(tmpl.name, {**values, "mail_from": "x"}), re.M)

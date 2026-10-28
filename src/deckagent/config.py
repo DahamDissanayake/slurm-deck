@@ -37,6 +37,7 @@ class AgentConfig:
     max_json_bytes: int
     upload_resume_hours: int
     session_ports: tuple[int, int] = (8800, 8999)
+    socket_group: str = "sd-agent"
     resize_script: str = RESIZE_SCRIPT
     admins_file: str = ADMINS_FILE
 
@@ -69,6 +70,7 @@ def load_config(env: Mapping[str, str]) -> AgentConfig:
     nfs_root = env.get("SD_NFS_ROOT") or "/shared"
     return AgentConfig(
         socket_path=env.get("SD_AGENT_SOCKET") or "/run/slurm-deck-web/agent.sock",
+        socket_group=env.get("SD_AGENT_SOCKET_GROUP") or "sd-agent",
         db_ro_url=env.get("SD_DB_RO_URL", ""),
         nfs_root=nfs_root,
         web_uid=_int(env, "SD_WEB_UID"),
