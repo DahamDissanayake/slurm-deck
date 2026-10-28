@@ -294,7 +294,8 @@ def test_agent_rebuilds_a_venv_that_has_no_pip(ctx):
 
 
 def _secrets_env(ctx):
-    return [i for c, i in zip(ctx.login.cmds, ctx.login.inputs) if "secrets.env.new" in c][-1]
+    writes = zip(ctx.login.cmds, ctx.login.inputs, strict=True)
+    return [i for c, i in writes if "secrets.env.new" in c][-1]
 
 
 def test_resend_without_an_api_key_is_an_error(ctx):
