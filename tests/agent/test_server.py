@@ -5,6 +5,7 @@ A real AgentServer runs on a temp Unix socket. Callers come from a fake
 resolver (session resolution is Task 6), and verbs from a private registry.
 """
 
+import grp
 import json as jsonlib
 import os
 import socket
@@ -72,6 +73,9 @@ def _resolve(peer_uid, headers, store, config):
     raise AgentError("no_session", "Sign in again.", 401)
 
 
+MY_GROUP = grp.getgrgid(os.getgid()).gr_name
+
+
 @dataclass
 class Agent:
     path: str
@@ -82,7 +86,7 @@ def _start(tmp_path: Path, **overrides: str) -> Iterator[Agent]:
     env = {"SD_AGENT_SOCKET": str(tmp_path / "agent.sock"), "SD_WEB_UID": str(os.getuid()),
            "SD_WORKER_UID": "1", "SD_REQUEST_DEADLINE_S": "3", "SD_MAX_WORKERS": "4",
            "SD_MAX_JSON_BYTES": "1024", "SD_AUDIT_LOG": str(tmp_path / "audit.jsonl"),
-           **overrides}
+           "SD_AGENT_SOCKET_GROUP": MY_GROUP, **overrides}
     server = AgentServer(load_config(env), store=None, resolve=_resolve, verbs=registry)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -225,11 +229,27 @@ def test_socket_file_is_0660(agent):
     assert os.stat(agent.path).st_mode & 0o777 == 0o660
 
 
+def test_socket_gets_the_configured_group(agent):
+    assert agent.server.config.socket_group == MY_GROUP
+    st = os.stat(agent.path)
+    assert st.st_gid == grp.getgrnam(MY_GROUP).gr_gid and st.st_mode & 0o777 == 0o660
+
+
+def test_unknown_socket_group_is_a_startup_error_naming_it(tmp_path):
+    env = {"SD_AGENT_SOCKET": str(tmp_path / "agent.sock"), "SD_WEB_UID": str(os.getuid()),
+           "SD_WORKER_UID": "1", "SD_AUDIT_LOG": str(tmp_path / "audit.jsonl"),
+           "SD_AGENT_SOCKET_GROUP": "sd-no-such-group"}
+    with pytest.raises(ValueError, match="sd-no-such-group"):
+        AgentServer(load_config(env), store=None, resolve=_resolve, verbs=registry)
+    assert not (tmp_path / "agent.sock").exists()
+
+
 def test_config_defaults_and_required_uids():
     c = load_config({"SD_WEB_UID": "1001", "SD_WORKER_UID": "1002"})
     assert (c.nfs_root, c.ops_user, c.max_workers, c.request_deadline_s) == (
         "/shared", "sd-ops", 8, 30)
     assert c.stats_file == "/shared/.gpu_stats.json" and c.max_json_bytes == 1024 * 1024
+    assert c.socket_group == "sd-agent"
     assert replace(c, partition="x").partition == "x"
     with pytest.raises(ValueError):
         load_config({"SD_WEB_UID": "1001"})

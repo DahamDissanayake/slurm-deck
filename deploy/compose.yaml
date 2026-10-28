@@ -66,6 +66,7 @@ services:
   web:
     <<: *app
     user: "${SD_WEB_UID}:${SD_WEB_GID}"
+    group_add: ["${SD_AGENT_GID:?set SD_AGENT_GID}"]   # deck-agent socket group
     # Port 8000 stays on the Compose network; only Caddy reaches it.
     expose:
       - "8000"
@@ -78,6 +79,7 @@ services:
   worker:
     <<: *app
     user: "${SD_WORKER_UID:?set SD_WORKER_UID}:${SD_WORKER_GID:?set SD_WORKER_GID}"
+    group_add: ["${SD_AGENT_GID:?set SD_AGENT_GID}"]   # deck-agent socket group
     command: ["python", "-m", "sdweb.worker"]
     volumes:
       - /run/slurm-deck-web:/run/slurm-deck-web:ro

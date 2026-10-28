@@ -11,6 +11,7 @@ end the process: every failure becomes a JSON error reply.
 
 from __future__ import annotations
 
+import grp
 import io
 import logging
 import os
@@ -261,10 +262,18 @@ class AgentServer(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
         self.verbs = verbs
         self._slots = threading.BoundedSemaphore(config.max_workers)
         path = config.socket_path
+        try:
+            gid = grp.getgrnam(config.socket_group).gr_gid
+        except KeyError:
+            raise ValueError(f"socket group {config.socket_group!r} does not exist; "
+                             "create it (the installer makes it) or set "
+                             "SD_AGENT_SOCKET_GROUP") from None
         if os.path.exists(path) and stat.S_ISSOCK(os.lstat(path).st_mode):
             os.unlink(path)   # a stale socket from a previous run
         super().__init__(path, _Handler)
-        # Group (sdweb's group) is set by the installer; nobody else gets in.
+        # Only the socket group (sdweb and sdworker, via the containers'
+        # group_add) may connect; the peer UID check still decides who is served.
+        os.chown(path, -1, gid)
         os.chmod(path, 0o660)
 
     def process_request(self, request: Any, client_address: Any) -> None:

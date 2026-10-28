@@ -1,6 +1,7 @@
 """A real deck-agent on a temp socket with the production verbs, fake system
 commands on PATH (each logs `name args` to fake.log), and an AgentClient."""
 
+import grp
 import os
 import sys
 import threading
@@ -95,7 +96,8 @@ def agent(tmp_path, monkeypatch):
            "SD_WORKER_UID": "1", "SD_SLURM_BIN": str(bindir), "SD_COMPUTE_NODE": "gpu1",
            "SD_NFS_ROOT": str(tmp_path / "shared"), "SD_AUDIT_LOG": str(tmp_path / "audit"),
            "SD_GPU_HELPER_SSH": "sdprov@gpu-host", "SD_GPU_HELPER_KEY": "/k",
-           "SD_GRANT_KEY_FILE": str(tmp_path / "grant.key")}
+           "SD_GRANT_KEY_FILE": str(tmp_path / "grant.key"),
+           "SD_AGENT_SOCKET_GROUP": grp.getgrgid(os.getgid()).gr_name}
     from deckagent.verbs.files import ACTIVE_ACCOUNTS
 
     ACTIVE_ACCOUNTS.clear()
