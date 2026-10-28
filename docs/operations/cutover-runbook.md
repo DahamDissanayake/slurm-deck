@@ -9,6 +9,39 @@ Run everything as root on the node named. `SYSADMINS` is the comma-separated lis
 people who must always keep ssh (never removed). Set `SYSADMIN_GROUP` to the group they
 belong to, and `PUBLIC_HOSTNAME` is in `/etc/slurm-deck-web/site.env`.
 
+## 0. At install: cluster hardening (design §10)
+
+The installer's `harden` step runs the scripts in `deploy/cluster/harden/` as root, from a
+root-owned copy in `/usr/local/lib/slurm-deck/cluster/harden/` on each node. It runs every
+`--check` first and prints the output, then runs `--apply` only when you confirm (answer `y`,
+or pass `--apply-hardening`). Until it has been applied the install doesn't finish: the
+installer stops with an error, and the next run resumes at `harden`.
+
+The scripts get `NFS_ROOT` and `SYSADMINS` from the site values (`nfs_root`, `sysadmins`).
+In this order:
+
+| # | Script | Node | `--check` shows | `--apply` does |
+|---|--------|------|-----------------|----------------|
+| 1 | `remove-docker-group.sh` | login node, then GPU host | the `docker` members, who would be removed, the running containers | removes everyone but `SYSADMINS`, plus the admin account that runs docker compose (login node) and the GPU admin login if it isn't root |
+| 2 | `service-accounts.sh` | login node, then GPU host | whether `sd-stats` exists, the legacy units still installed | creates `sd-stats`, disables `slurm-deck-stats` and `slurm-deck-pod-notify.timer`, runs `sd-stats-writer` as `sd-stats` where `nvidia-smi` exists |
+| 3 | `shared-areas.sh` | GPU host (the NFS server) | per area under `NFS_ROOT`, counts of wrong owners, directory modes, writable files, `gpuusers` ACLs | owner `sd-ops:gpuadmins`, directories `2775`, no group/other write on files, `gpuadmins` ACLs; never `users/` or `jobs/` |
+
+Before you confirm, read the `--check` output:
+
+- **Docker group:** every person who must keep `docker` is in `sysadmins`. If `SYSADMINS` is
+  empty and the GPU admin login is root, `--apply` refuses on the GPU host. Stop any running
+  container a removed user still needs. Their open sessions keep the group until they log out.
+- **Shared areas:** the counts are what you expect, and `sd-ops` exists (the installer creates
+  it in `gpuhost_bootstrap`).
+- **Service accounts:** the TUI's pod notifications stop when the timer is disabled.
+
+After `--apply`, check on each node. `getent group docker` lists only the sysadmins.
+`--check` again shows nothing to remove and zero counts. A normal user can't write
+`$NFS_ROOT/envs`. `systemctl show -p User sd-stats-writer` prints `User=sd-stats` on the GPU host.
+
+To run a script by hand: `sudo NFS_ROOT=/shared SYSADMINS=amasha,dinuka
+/usr/local/lib/slurm-deck/cluster/harden/<script> --check` (then `--apply`).
+
 ## 1. A week or more before: decide who is who
 
 On the login node and on the GPU host:

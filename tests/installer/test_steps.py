@@ -18,7 +18,7 @@ ANSWERS = {
     "public_hostname": "deck.example.org", "gpu_host": "10.0.0.2", "login_addr": "10.0.0.1",
     "lan_addr": "192.168.1.5", "compute_node": "gpu1", "admin_email": "a@example.org",
     "admin_name": "Ada Admin", "admin_username": "ada", "admin_unix_user": "slurmadmin",
-    "gpu_admin_user": "root",
+    "gpu_admin_user": "root", "nfs_root": "/shared",
 }
 REPLIES = {r"^id -u sdweb": "990\n", r"^id -g sdweb": "990\n", r"^id -u sdworker": "991\n",
            r"^id -g sdworker": "991\n", r"cat .*\.pub": "ssh-ed25519 AAAAkey deck-agent\n",
@@ -47,7 +47,7 @@ def ctx(tmp_path):
     state = State(tmp_path / "install-state.json")
     state.data["answers"] = dict(ANSWERS)
     return steps.Ctx(login=login, gpu_target=lambda answers: gpu, state=state, repo=REPO,
-                     accept_small=True, log=lambda msg: None)
+                     accept_small=True, apply_hardening=True, log=lambda msg: None)
 
 
 def test_session_hostname_defaults_and_reaches_every_env_file(ctx):
@@ -172,3 +172,68 @@ def test_preflight_needs_nft_for_the_db_firewall(ctx):
     ctx.login.codes = {"command -v nft": 1}
     with pytest.raises(steps.InstallError, match="nftables"):
         steps.preflight(ctx)
+
+
+def _harden_runs(target, mode):
+    return [c for c in target.cmds if re.search(rf"/harden/[\w-]+\.sh --{mode}\b", c)]
+
+
+def test_harden_checks_every_script_on_its_node_then_applies_when_confirmed(ctx):
+    ctx.apply_hardening = True
+    ctx.state.data["answers"].update(nfs_root="/srv/share", sysadmins="amasha,dinuka")
+    assert steps.harden(ctx) is None
+    lib = "/usr/local/lib/slurm-deck"
+    for t in (ctx.login, ctx.gpu):   # staged root-owned, in the layout the scripts expect
+        staged = " ".join(t.cmds)
+        assert f"{lib}/cluster/harden/remove-docker-group.sh.new" in staged
+        assert f"{lib}/cluster/sd-stats-writer.new" in staged
+        assert f"{lib}/systemd/sd-stats-writer.service.new" in staged
+    login_checks, gpu_checks = _harden_runs(ctx.login, "check"), _harden_runs(ctx.gpu, "check")
+    assert [re.search(r"harden/([\w-]+)\.sh", c)[1] for c in login_checks] == [
+        "remove-docker-group", "service-accounts"]
+    assert [re.search(r"harden/([\w-]+)\.sh", c)[1] for c in gpu_checks] == [
+        "remove-docker-group", "service-accounts", "shared-areas"]
+    for t in (ctx.login, ctx.gpu):
+        checks, applies = _harden_runs(t, "check"), _harden_runs(t, "apply")
+        assert len(applies) == len(checks)
+        assert t.cmds.index(checks[-1]) < t.cmds.index(applies[0])   # every check before any apply
+        assert all("NFS_ROOT=/srv/share SYSADMINS=amasha,dinuka " in c for c in checks + applies)
+    login_docker = next(c for c in _harden_runs(ctx.login, "apply") if "docker-group" in c)
+    assert login_docker.endswith("--apply --keep slurmadmin")   # it runs docker compose
+    gpu_docker = next(c for c in _harden_runs(ctx.gpu, "apply") if "docker-group" in c)
+    assert gpu_docker.endswith("--apply")   # the GPU admin is root: nobody extra to keep
+
+
+def test_harden_keeps_a_non_root_gpu_admin_in_the_docker_group(ctx):
+    ctx.apply_hardening = True
+    ctx.state.data["answers"]["gpu_admin_user"] = "root-daham"
+    steps.harden(ctx)
+    gpu_docker = next(c for c in _harden_runs(ctx.gpu, "apply") if "docker-group" in c)
+    assert gpu_docker.endswith("--apply --keep root-daham")
+
+
+def test_install_does_not_finish_until_the_hardening_is_applied(ctx):
+    ctx.apply_hardening = False   # no --apply-hardening and no terminal to say yes on
+    with pytest.raises(steps.InstallError, match="--apply-hardening"):
+        steps.run_all(ctx)
+    assert _harden_runs(ctx.login, "check") and _harden_runs(ctx.gpu, "check")
+    assert not _harden_runs(ctx.login, "apply") and not _harden_runs(ctx.gpu, "apply")
+    assert "harden" not in ctx.state.data["done"] and "summary" not in ctx.state.data["done"]
+    ctx.apply_hardening = True
+    steps.run_all(ctx)   # the rerun resumes at harden
+    assert _harden_runs(ctx.gpu, "apply")
+    assert ctx.state.data["done"][-2:] == ["harden", "summary"]
+
+
+def test_harden_stops_the_install_when_a_script_fails(ctx):
+    ctx.apply_hardening = True
+    ctx.gpu.fail_on = r"shared-areas\.sh --check"   # e.g. sd-ops is missing
+    with pytest.raises(steps.InstallError):
+        steps.harden(ctx)
+    assert not _harden_runs(ctx.gpu, "apply")
+
+
+def test_harden_comes_after_the_accounts_it_needs_and_before_the_summary():
+    names = [n for n, _ in steps.STEPS]
+    assert names.index("gpuhost_bootstrap") < names.index("harden") < names.index("summary")
+    assert names[-2:] == ["harden", "summary"]

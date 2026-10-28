@@ -1,4 +1,5 @@
 """python3 -m deploy.installer [--check] [--resume] [--answers FILE] [--accept-small]
+                              [--apply-hardening]
 
 Installs Slurm Deck on the login node. Progress is kept in
 /etc/slurm-deck-web/install-state.json, so after a failure the same command
@@ -23,6 +24,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--answers", help="JSON file with the site values, instead of prompts")
     ap.add_argument("--accept-small", action="store_true",
                     help="go on when the login node is below 4 vCPUs, 12 GB RAM or has no swap")
+    ap.add_argument("--apply-hardening", action="store_true",
+                    help="apply the cluster hardening after its --check, without asking")
     ap.add_argument("--state", default=DEFAULT_PATH, help=argparse.SUPPRESS)
     args = ap.parse_args(argv)
 
@@ -34,7 +37,7 @@ def main(argv: list[str] | None = None) -> int:
 
     ctx = steps.Ctx(login=login, gpu_target=gpu_target, state=State(args.state),
                     repo=Path(__file__).resolve().parents[2], check=args.check,
-                    accept_small=args.accept_small)
+                    accept_small=args.accept_small, apply_hardening=args.apply_hardening)
     if args.check:
         ctx.login = steps.Dry(login, ctx.planned)
     try:

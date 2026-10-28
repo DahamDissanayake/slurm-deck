@@ -91,6 +91,7 @@ class Ctx:
     repo: Path
     check: bool = False
     accept_small: bool = False
+    apply_hardening: bool = False
     planned: list[str] = field(default_factory=list)
     log: Callable[[str], None] = print
 
@@ -145,6 +146,7 @@ SITE_FIELDS: list[tuple[str, str, str | None]] = [
     ("admin_unix_user", "Account that runs docker compose (slurmadmin)", "slurmadmin"),
     ("gpu_admin_user", "GPU host admin login (root, or an account with sudo)", "root"),
     ("gpu_admin_key", "SSH key for that login (blank for the default)", ""),
+    ("sysadmins", "Sysadmins who keep the docker group (comma-separated)", ""),
 ]
 
 
@@ -373,6 +375,57 @@ def network(ctx: Ctx) -> bool:
     return True
 
 
+# (script, nodes it runs on), in order: shared-areas.sh needs sd-ops (gpuhost_bootstrap).
+HARDENING = [("remove-docker-group.sh", ("login", "gpu")),
+             ("service-accounts.sh", ("login", "gpu")),
+             ("shared-areas.sh", ("gpu",))]
+
+
+def _confirm(question: str) -> bool:
+    if not sys.stdin.isatty():
+        return False
+    try:
+        return input(f"{question} [y/N]: ").strip().lower() in ("y", "yes")
+    except EOFError:
+        return False
+
+
+def harden(ctx: Ctx) -> None:
+    """The §10 cluster hardening (deploy/cluster/harden): each script's --check on its
+    node, then --apply only once confirmed (--apply-hardening, or yes at the prompt).
+    Unconfirmed, the step fails, so the install doesn't finish until it has been applied.
+    The scripts run from a root-owned copy, not from the admin's checkout."""
+    a, lib, src = ctx.answers, "/usr/local/lib/slurm-deck", ctx.repo / "deploy"
+    nodes = {"login": ctx.login, "gpu": ctx.gpu}
+    files = [(f"cluster/harden/{s}", "0755") for s, _ in HARDENING] + [
+        ("cluster/sd-stats-writer", "0755"), ("systemd/sd-stats-writer.service", "0644")]
+    for t in nodes.values():
+        t.run(f"install -d -m 0755 {lib}/cluster/harden {lib}/systemd")
+        for rel, mode in files:
+            t.write(f"{lib}/{rel}", (src / rel).read_text(), mode)
+    env = (f"NFS_ROOT={shlex.quote(a['nfs_root'])} "
+           f"SYSADMINS={shlex.quote(str(a.get('sysadmins') or ''))} ")
+    keep = {"login": a["admin_unix_user"],   # runs docker compose
+            "gpu": "" if a["gpu_admin_user"] == "root" else a["gpu_admin_user"]}
+
+    def cmd(script: str, node: str, mode: str) -> str:
+        extra = f" --keep {shlex.quote(keep[node])}" if (
+            mode == "apply" and script == "remove-docker-group.sh" and keep[node]) else ""
+        return f"{env}{lib}/cluster/harden/{script} --{mode}{extra}"
+
+    runs = [(s, n) for s, ns in HARDENING for n in ns]
+    for script, node in runs:
+        ctx.log(f"--- {node}: {script} --check\n"
+                + nodes[node].run(cmd(script, node, "check")).stdout.strip())
+    if not ctx.check and not ctx.apply_hardening and not _confirm(
+            "Apply the hardening above (docker group, service accounts, shared areas)?"):
+        raise InstallError("harden: review the --check output above, then run the installer "
+                           "again with --apply-hardening (see docs/operations/cutover-runbook.md)")
+    for script, node in runs:
+        ctx.log(f"--- {node}: {script} --apply\n"
+                + nodes[node].run(cmd(script, node, "apply")).stdout.strip())
+
+
 def summary(ctx: Ctx) -> None:
     a = ctx.answers
     if ctx.check:
@@ -381,7 +434,7 @@ def summary(ctx: Ctx) -> None:
             f"  CA cert:     https://{a['public_hostname']}/ca.crt (install it once per device)\n"
             f"  If the name does not resolve, add to the hosts file:\n"
             f"               {a['lan_addr']} {a['public_hostname']} {a['session_hostname']}\n"
-            f"  Cutover:     docs/runbooks/cutover.md")
+            f"  Cutover:     docs/operations/cutover-runbook.md")
 
 
 STEPS: list[tuple[str, Callable[[Ctx], Any]]] = [
@@ -389,7 +442,7 @@ STEPS: list[tuple[str, Callable[[Ctx], Any]]] = [
     ("gpuhost_bootstrap", gpuhost_bootstrap), ("slurm_assoc", slurm_assoc),
     ("secrets", secrets_step), ("agent", agent), ("db_firewall", db_firewall),
     ("web_stack", web_stack),
-    ("backups", backups), ("network", network), ("summary", summary),
+    ("backups", backups), ("network", network), ("harden", harden), ("summary", summary),
 ]
 
 
