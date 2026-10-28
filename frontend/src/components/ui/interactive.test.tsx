@@ -102,8 +102,7 @@ describe("Toast", () => {
     render(<ToastProvider><Saver /></ToastProvider>);
     const region = screen.getByRole("region", { name: "Notifications" });
     fireEvent.click(screen.getByRole("button", { name: "Cancel job" }));
-    expect(region).toHaveTextContent("Job cancelled");
-    expect(region.querySelector("[aria-live]") ?? region).toBeTruthy();
+    expect(screen.getByRole("status")).toHaveTextContent("Job cancelled");
     act(() => { vi.advanceTimersByTime(6000); });
     expect(region).not.toHaveTextContent("Job cancelled");
 
