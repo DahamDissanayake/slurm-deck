@@ -122,7 +122,7 @@ def test_shared_areas_check_counts_and_never_lists_users_or_jobs(tmp_path):
     assert r.returncode == 0, r.stderr
     reported = {line.split(":")[0] for line in r.stdout.splitlines()}
     assert "models" in reported
-    assert reported <= {"envs", "models", "datasets", "data", "images", "scripts"}
+    assert reported <= set(AREAS) | {"tmp"}
     assert "users/" not in r.stdout and "jobs/" not in r.stdout
     assert _mode(root / "models" / "llm" / "w.bin") == 0o666   # unchanged
     assert "setfacl" not in _calls(tmp_path)
@@ -139,6 +139,100 @@ def test_shared_areas_apply_fixes_assets_and_leaves_users_and_jobs(tmp_path):
     assert _mode(root / "jobs" / "alice" / "out.log") == 0o666
     calls = _calls(tmp_path)
     assert f"{root}/users" not in calls and f"{root}/jobs" not in calls
+
+
+AREAS = ("envs", "models", "datasets", "data", "images", "scripts",
+         "templates", "miniforge3", "training-scripts")
+
+# What getfacl prints for a shared area on the live share before the fix.
+LIVE_ACL = """# file: {d}
+# owner: public
+# group: gpuusers
+user::rwx
+group::rwx
+other::r-x
+default:user::rwx
+default:group::rwx
+default:group:gpuadmins:rwx
+default:mask::rwx
+default:other::rwx
+"""
+
+
+def _getfacl_fake(body: str) -> str:
+    # The real getfacl takes the directory last; print the ACL once for it.
+    return f'd="${{@: -1}}"; cat <<EOT\n{body.replace("{d}", "$d")}EOT'
+
+
+def test_shared_areas_cover_templates_miniforge_and_training_scripts(tmp_path):
+    root = _share(tmp_path)
+    for area in ("templates", "miniforge3/etc", "training-scripts"):
+        (root / area).mkdir(parents=True)
+    (root / "miniforge3" / "etc" / "conda.sh").write_text("x")
+    (root / "miniforge3" / "etc" / "conda.sh").chmod(0o666)
+    bindir = _fake_bin(tmp_path, {"getfacl": "", "setfacl": ""})
+    r = _run("shared-areas.sh", ["--check"], bindir, **_area_env(root))
+    reported = {line.split(":")[0] for line in r.stdout.splitlines()}
+    assert {"templates", "miniforge3", "training-scripts"} <= reported
+    r = _run("shared-areas.sh", ["--apply"], bindir, **_area_env(root))
+    assert r.returncode == 0, r.stderr
+    assert _mode(root / "miniforge3" / "etc" / "conda.sh") == 0o644
+    assert _mode(root / "templates") == 0o2775
+
+
+def test_shared_areas_check_reports_writable_default_acls(tmp_path):
+    root = _share(tmp_path)
+    bindir = _fake_bin(tmp_path, {"getfacl": _getfacl_fake(LIVE_ACL), "setfacl": ""})
+    env = {**_area_env(root), "ADMIN_GROUP": "gpuadmins"}
+    r = _run("shared-areas.sh", ["--check"], bindir, **env)
+    assert r.returncode == 0, r.stderr
+    models = next(line for line in r.stdout.splitlines() if line.startswith("models:"))
+    # default:group:: and default:other:: grant write; the gpuadmins entry may.
+    assert "default-acl=2" in models
+    assert "setfacl" not in _calls(tmp_path)
+
+
+def test_shared_areas_check_reports_clean_default_acls_as_zero(tmp_path):
+    root = _share(tmp_path)
+    clean = LIVE_ACL.replace("default:group::rwx", "default:group::r-x") \
+                    .replace("default:other::rwx", "default:other::r-x")
+    bindir = _fake_bin(tmp_path, {"getfacl": _getfacl_fake(clean), "setfacl": ""})
+    r = _run("shared-areas.sh", ["--check"], bindir,
+             **{**_area_env(root), "ADMIN_GROUP": "gpuadmins"})
+    assert "default-acl=0" in r.stdout
+
+
+def test_shared_areas_apply_resets_default_acls_on_every_directory(tmp_path):
+    root = _share(tmp_path)
+    bindir = _fake_bin(tmp_path, {"getfacl": "", "setfacl": ""})
+    r = _run("shared-areas.sh", ["--apply"], bindir, **_area_env(root))
+    assert r.returncode == 0, r.stderr
+    resets = [line for line in _calls(tmp_path).splitlines()
+              if line.startswith("setfacl") and "d:g::r-x" in line and "d:o::r-x" in line]
+    assert any(f"{root}/models/llm" in line for line in resets)
+    assert any(f"{root}/envs" in line for line in resets)
+
+
+def test_shared_areas_flags_tmp_for_removal_and_never_changes_it(tmp_path):
+    root = _share(tmp_path)
+    (root / "tmp" / "pipcache").mkdir(parents=True)
+    (root / "tmp" / "pipcache").chmod(0o777)
+    bindir = _fake_bin(tmp_path, {"getfacl": "", "setfacl": ""})
+    r = _run("shared-areas.sh", ["--check"], bindir, **_area_env(root))
+    assert "tmp: unused" in r.stdout and "remove it by hand" in r.stdout
+    r = _run("shared-areas.sh", ["--apply"], bindir, **_area_env(root))
+    assert r.returncode == 0, r.stderr
+    assert "tmp: unused" in r.stdout
+    assert (root / "tmp" / "pipcache").is_dir()
+    assert _mode(root / "tmp" / "pipcache") == 0o777
+    assert f"{root}/tmp" not in _calls(tmp_path)
+
+
+def test_shared_areas_without_tmp_says_nothing_about_it(tmp_path):
+    root = _share(tmp_path)
+    bindir = _fake_bin(tmp_path, {"getfacl": "", "setfacl": ""})
+    r = _run("shared-areas.sh", ["--check"], bindir, **_area_env(root))
+    assert "tmp" not in r.stdout
 
 
 # ── service-accounts.sh ──────────────────────────────────────────────────────
