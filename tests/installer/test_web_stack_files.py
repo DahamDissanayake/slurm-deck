@@ -23,6 +23,15 @@ def test_no_service_mounts_shared_docker_socket_or_munge():
             assert "munge" not in source and "/etc/shadow" not in source, name
 
 
+def test_web_and_worker_carry_the_agent_socket_group():
+    # deck-agent's socket is root:sd-agent 0660; containers get no host groups.
+    services = _services()
+    for name in ("web", "worker"):
+        assert services[name]["group_add"] == ["${SD_AGENT_GID:?set SD_AGENT_GID}"], name
+    for name in ("migrate", "caddy", "db"):
+        assert "group_add" not in services.get(name, {}), name
+
+
 @pytest.mark.parametrize("name", ["web", "worker", "migrate"])
 def test_app_containers_are_non_root_read_only_without_capabilities(name):
     svc = _services()[name]

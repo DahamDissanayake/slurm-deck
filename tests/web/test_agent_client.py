@@ -1,5 +1,6 @@
 """AgentClient against a real deck-agent on a Unix socket."""
 
+import grp
 import os
 import sys
 import threading
@@ -29,7 +30,8 @@ def socket_path(tmp_path):
         return {"offset": int(ctx.headers["x-sd-offset"]) + len(stream.read())}
 
     env = {"SD_AGENT_SOCKET": str(tmp_path / "a.sock"), "SD_WEB_UID": str(os.getuid()),
-           "SD_WORKER_UID": "1", "SD_NFS_ROOT": str(tmp_path), "SD_AUDIT_LOG": str(tmp_path / "x")}
+           "SD_WORKER_UID": "1", "SD_NFS_ROOT": str(tmp_path), "SD_AUDIT_LOG": str(tmp_path / "x"),
+           "SD_AGENT_SOCKET_GROUP": grp.getgrgid(os.getgid()).gr_name}
     server = AgentServer(load_config(env), store=None, verbs=registry,
                          resolve=lambda p, h, s, c: Caller("amasha", "user", "hidden", False, None))
     threading.Thread(target=server.serve_forever, daemon=True).start()

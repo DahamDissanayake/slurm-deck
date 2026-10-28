@@ -229,7 +229,10 @@ def accounts_login(ctx: Ctx) -> None:
     uid = _ops_uid(ctx)
     for cmd in ("getent group webusers >/dev/null || groupadd webusers",
                 _account("sdweb"), _account("sdworker"),
-                _account("sd-ops", uid), "usermod -aG gpuadmins sd-ops"):
+                _account("sd-ops", uid), "usermod -aG gpuadmins sd-ops",
+                # deck-agent's socket is root:sd-agent 0660; only web and worker connect.
+                "getent group sd-agent >/dev/null || groupadd --system sd-agent",
+                "usermod -aG sd-agent sdweb", "usermod -aG sd-agent sdworker"):
         ctx.login.run(cmd)
 
 
@@ -273,6 +276,7 @@ def _values(ctx: Ctx) -> dict[str, Any]:
     gid = lambda user: ctx.out(ctx.login, f"id -g {user}", "<gid>")  # noqa: E731
     return {**ctx.answers, "web_uid": uid("sdweb"), "web_gid": gid("sdweb"),
             "worker_uid": uid("sdworker"), "worker_gid": gid("sdworker"),
+            "agent_gid": ctx.out(ctx.login, "getent group sd-agent | cut -d: -f3", "<gid>"),
             "compose_dir": str(ctx.repo / "deploy"),
             "db_password": ctx.secret("db_password"), "agent_db_password": ctx.secret("agent_db_password")}
 
@@ -452,10 +456,15 @@ STEPS: list[tuple[str, Callable[[Ctx], Any]]] = [
 ]
 
 
+# Idempotent steps that run every time, so a fixed installer reaches an
+# existing install: accounts and groups, and the config files from saved answers.
+ALWAYS = frozenset({"accounts_login", "secrets"})
+
+
 def run_all(ctx: Ctx, given: dict[str, Any] | None = None) -> None:
-    """Run the steps not yet done, stopping at the first that fails."""
+    """Run the steps not yet done (and the ALWAYS ones), stopping at the first that fails."""
     for name, step in STEPS:
-        if ctx.state.done(name):
+        if ctx.state.done(name) and name not in ALWAYS:
             ctx.log(f"{name}: done already")
             continue
         ctx.log(f"==> {name}")
