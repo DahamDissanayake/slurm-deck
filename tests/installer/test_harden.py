@@ -245,13 +245,17 @@ def test_shared_areas_without_tmp_says_nothing_about_it(tmp_path):
 # nothing for a path once setfacl has removed iit there (unless STUBBORN is set).
 ACL_FAKES = {
     "getfacl": r"""
-[ -z "$STUBBORN" ] && grep -qxF "setfacl -PR -x u:iit ${@: -1}" "$(dirname "$0")/../calls.log" && exit 0
-me=$(id -un)
-case "${@: -1}" in
-  */users/alice) printf '# file: %s\nuser::rwx\nuser:%s:rwx\nuser:iit:rwx\nuser:daham:rwx\n' "${@: -1}" "$me"
-                 printf 'group:gpuadmins:rwx\nmask::rwx\ndefault:user:iit:rwx\ndefault:user:daham:rwx\n\n'
-                 printf '# file: %s/notes.txt\nuser:daham:rw-\n\n' "${@: -1}" ;;
-  */models) printf '# file: %s\nuser:iit:rwx\nuser:sd-ops:rwx\ndefault:user:iit:rwx\n\n' "${@: -1}" ;;
+p="${@: -1}"
+log="$(dirname "$0")/../calls.log"
+[ -z "$STUBBORN" ] && grep -qxF "setfacl -PR -x u:iit $p" "$log" && exit 0
+case "$p" in
+  */users/alice)
+    printf '# file: %s\nuser::rwx\nuser:%s:rwx\n' "$p" "$(id -un)"
+    printf 'user:iit:rwx\nuser:daham:rwx\ngroup:gpuadmins:rwx\nmask::rwx\n'
+    printf 'default:user:iit:rwx\ndefault:user:daham:rwx\n\n'
+    printf '# file: %s/notes.txt\nuser:daham:rw-\n\n' "$p" ;;
+  */models)
+    printf '# file: %s\nuser:iit:rwx\nuser:sd-ops:rwx\ndefault:user:iit:rwx\n\n' "$p" ;;
 esac""",
     "setfacl": "",
 }
