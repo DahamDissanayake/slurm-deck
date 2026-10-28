@@ -117,10 +117,10 @@ def test_deck_agent_may_write_the_sites_nfs_root(ctx):
     ctx.state.data["answers"]["nfs_root"] = "/data/nfs"
     steps.run_all(ctx)
     conf = "/etc/systemd/system/deck-agent.service.d/nfs-root.conf"
-    written = [i for c, i in zip(ctx.login.cmds, ctx.login.inputs) if f"mv {conf}.new" in c]
-    assert written == ["[Service]\nReadWritePaths=/data/nfs\n"]
-    reload = next(i for i, c in enumerate(ctx.login.cmds) if "restart deck-agent" in c)
-    assert ctx.login.cmds.index(next(c for c in ctx.login.cmds if f"mv {conf}.new" in c)) < reload
+    cmds = ctx.login.cmds
+    at = [n for n, c in enumerate(cmds) if f"mv {conf}.new" in c]
+    assert [ctx.login.inputs[n] for n in at] == ["[Service]\nReadWritePaths=/data/nfs\n"]
+    assert at[0] < next(n for n, c in enumerate(cmds) if "restart deck-agent" in c)
 
 
 def test_the_first_admin_is_listed_in_the_admins_file_before_create_admin(ctx):
