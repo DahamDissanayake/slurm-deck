@@ -13,6 +13,7 @@ import time
 from collections.abc import Iterator
 from typing import Any
 
+import httpx
 import pytest
 from e2e_support import (
     JOB_WAIT,
@@ -76,7 +77,7 @@ def _bytes(n: int, stop_after: int | None = None) -> Iterator[bytes]:
 
 def test_scenario_2_upload_resumes(alice: Api) -> None:
     size = int(float(os.environ.get("SD_E2E_UPLOAD_GB", "20")) * 1024 ** 3)
-    chunk = 256 * MIB
+    chunk = 64 * MIB   # the upload panel's chunk size; Caddy allows 128 MB
     dest = alice.my_files()
     meta = f"filename {_b64('standin.bin')},dest_dir {_b64(dest)}"
     r = alice.call("POST", "/api/uploads", expect=201,
@@ -85,10 +86,13 @@ def test_scenario_2_upload_resumes(alice: Api) -> None:
     url = r.headers["location"]
     tus = {"Tus-Resumable": "1.0.0", "Content-Type": "application/offset+octet-stream"}
     try:
-        with pytest.raises(Exception):   # noqa: B017 - any transport error will do
-            alice.http.patch(url, headers={**tus, "Upload-Offset": "0",
-                                           "Content-Length": str(min(chunk, size))},
-                             content=_bytes(min(chunk, size), stop_after=chunk // 2))
+        try:   # the client may raise, or the server may answer the short body
+            cut = alice.http.patch(url, headers={**tus, "Upload-Offset": "0",
+                                                 "Content-Length": str(min(chunk, size))},
+                                   content=_bytes(min(chunk, size), stop_after=chunk // 2))
+            assert cut.status_code != 204, "the interrupted chunk was accepted whole"
+        except (_Interrupted, httpx.HTTPError):
+            pass
         offset = int(alice.call("HEAD", url).headers["upload-offset"])
         assert 0 <= offset < size
         while offset < size:
@@ -120,7 +124,7 @@ def test_scenario_3_extend_then_refused_at_cap(alice: Api) -> None:
         assert first["new_limit_s"] == 5 * 60 + 3600
         assert alice.job(job_id)["time_limit_s"] == first["new_limit_s"]
         for _ in range(12):
-            r = alice.call("POST", f"/api/jobs/{job_id}/extend", expect=None, json={"hours": 4})
+            r = alice.http.post(f"/api/jobs/{job_id}/extend", json={"hours": 4})
             if r.status_code != 200:
                 break
         assert r.status_code == 422 and r.json()["error"] == "over_cap", r.text

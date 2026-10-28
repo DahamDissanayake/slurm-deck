@@ -18,7 +18,7 @@ T = TypeVar("T")
 PREFIX = os.environ.get("SD_E2E_PREFIX", "sdtest")
 EMAIL = os.environ.get("SD_E2E_EMAIL", "delivered+{name}@resend.dev")
 PSQL = os.environ.get(
-    "SD_E2E_PSQL", "sudo docker exec -i deploy-db-1 psql -U sdweb -d slurmdeck -At -c")
+    "SD_E2E_PSQL", "sudo docker exec deploy-db-1 psql -U sdweb -d slurmdeck -At -c")
 JOB_WAIT = float(os.environ.get("SD_E2E_JOB_WAIT", "1800"))
 TOKEN_RE = re.compile(r"#token=([A-Za-z0-9_.~%-]+)")
 
@@ -118,7 +118,8 @@ class Api:
 
 
 def psql(sql: str) -> str:
-    r = subprocess.run([*shlex.split(PSQL), sql], capture_output=True, text=True, timeout=60)
+    r = subprocess.run([*shlex.split(PSQL), sql], stdin=subprocess.DEVNULL, capture_output=True,
+                       text=True, timeout=60)
     assert r.returncode == 0, r.stderr
     return r.stdout
 
