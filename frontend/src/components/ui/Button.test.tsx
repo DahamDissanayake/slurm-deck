@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { PlusIcon } from "../icons";
@@ -45,9 +45,9 @@ describe("IconButton", () => {
     render(<IconButton label="Cancel job" icon={<PlusIcon />} />);
     const button = screen.getByRole("button", { name: "Cancel job" });
     expect(screen.queryByRole("tooltip")).toBeNull();
-    fireEvent.focus(button);
+    act(() => button.focus());
     expect(screen.getByRole("tooltip")).toHaveTextContent("Cancel job");
-    fireEvent.blur(button);
+    act(() => button.blur());
     expect(screen.queryByRole("tooltip")).toBeNull();
   });
 });
