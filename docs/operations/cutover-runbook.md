@@ -25,6 +25,7 @@ In this order:
 | 1 | `remove-docker-group.sh` | login node, then GPU host | the `docker` members, who would be removed, the running containers | removes everyone but `SYSADMINS`, plus the admin account that runs docker compose (login node) and the GPU admin login if it isn't root |
 | 2 | `service-accounts.sh` | login node, then GPU host | whether `sd-stats` exists, the legacy units still installed | creates `sd-stats`, disables `slurm-deck-stats` and `slurm-deck-pod-notify.timer`, runs `sd-stats-writer` as `sd-stats` where `nvidia-smi` exists |
 | 3 | `shared-areas.sh` | GPU host (the NFS server) | per area under `NFS_ROOT` (`envs`, `models`, `datasets`, `data`, `images`, `scripts`, `templates`, `miniforge3`, `training-scripts`), counts of wrong owners, directory modes, writable files, `gpuusers` ACLs, default ACL entries that let a group or other write (`default-acl`); a `tmp:` line when `NFS_ROOT/tmp` exists | owner `sd-ops:gpuadmins`, directories `2775`, no group/other write on files, `gpuadmins` ACLs, default ACL group and other `r-x` on every directory; never `users/`, `jobs/` or `tmp/` |
+| 4 | `named-acls.sh` | GPU host (the NFS server) | per folder, each named-person ACL entry (`user:<name>`, access and default) with how many files carry it | removes them from `NFS_ROOT`, every `users/<u>` and `jobs/<u>` tree and every shared area, keeping only each user folder's owner, `sd-ops` and any `NAMED_ACL_ALLOW` / `--allow` names; group entries are never touched |
 
 Before you confirm, read the `--check` output:
 
@@ -37,10 +38,18 @@ Before you confirm, read the `--check` output:
   platform uses it (environment builds use their own temp folder). Look through it, then
   remove it by hand; the script never changes or deletes it.
 - **Service accounts:** the TUI's pod notifications stop when the timer is disabled.
+- **Named-person ACLs:** the list shows the people (for example `iit`, `daham`) who can
+  read and write other users' folders today. After `--apply` admins reach user folders only
+  through `gpuadmins` (the folders' `group:gpuadmins` entry) and `sd-ops`, never as
+  themselves. A person who must keep a named entry goes in `--allow` (run the script by hand).
+  Check over the GPU host's own path: over NFSv4 the login node shows no POSIX ACLs.
 
 After `--apply`, check on each node. `getent group docker` lists only the sysadmins.
 `--check` again shows nothing to remove and zero counts. A normal user can't write
 `$NFS_ROOT/envs`. `systemctl show -p User sd-stats-writer` prints `User=sd-stats` on the GPU host.
+On the GPU host, `getfacl -p $NFS_ROOT/users/<u> $NFS_ROOT/models` shows no `user:<name>` or
+`default:user:<name>` line except the folder owner's and `sd-ops`, and
+`named-acls.sh --check` prints `no named-user ACL entries to remove`.
 
 To run a script by hand: `sudo NFS_ROOT=/shared SYSADMINS=amasha,dinuka
 /usr/local/lib/slurm-deck/cluster/harden/<script> --check` (then `--apply`).

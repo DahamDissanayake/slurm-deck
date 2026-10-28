@@ -239,6 +239,87 @@ def test_shared_areas_without_tmp_says_nothing_about_it(tmp_path):
     assert "tmp" not in r.stdout
 
 
+# ── named-acls.sh ────────────────────────────────────────────────────────────
+
+# A getfacl that reports named-user entries on users/alice and models, and
+# nothing for a path once setfacl has removed iit there (unless STUBBORN is set).
+ACL_FAKES = {
+    "getfacl": r"""
+[ -z "$STUBBORN" ] && grep -qxF "setfacl -PR -x u:iit ${@: -1}" "$(dirname "$0")/../calls.log" && exit 0
+me=$(id -un)
+case "${@: -1}" in
+  */users/alice) printf '# file: %s\nuser::rwx\nuser:%s:rwx\nuser:iit:rwx\nuser:daham:rwx\n' "${@: -1}" "$me"
+                 printf 'group:gpuadmins:rwx\nmask::rwx\ndefault:user:iit:rwx\ndefault:user:daham:rwx\n\n'
+                 printf '# file: %s/notes.txt\nuser:daham:rw-\n\n' "${@: -1}" ;;
+  */models) printf '# file: %s\nuser:iit:rwx\nuser:sd-ops:rwx\ndefault:user:iit:rwx\n\n' "${@: -1}" ;;
+esac""",
+    "setfacl": "",
+}
+
+
+def _acl_share(tmp_path: Path) -> Path:
+    root = _share(tmp_path)
+    (root / "outside").mkdir()
+    (root / "link").symlink_to(root / "outside")
+    return root
+
+
+def test_named_acls_check_lists_entries_and_changes_nothing(tmp_path):
+    root = _acl_share(tmp_path)
+    bindir = _fake_bin(tmp_path, ACL_FAKES)
+    r = _run("named-acls.sh", ["--check"], bindir, NFS_ROOT=str(root))
+    assert r.returncode == 0, r.stderr
+    assert "users/alice: user:daham (access 2, default 1)" in r.stdout
+    assert "users/alice: user:iit (access 1, default 1)" in r.stdout
+    assert "models: user:iit (access 1, default 1)" in r.stdout
+    assert f"user:{_whoami()} " not in r.stdout     # the folder owner keeps theirs
+    assert "user:sd-ops" not in r.stdout             # sd-ops is always kept
+    assert "setfacl" not in _calls(tmp_path)
+
+
+def test_named_acls_apply_removes_access_and_default_entries_without_following_links(tmp_path):
+    root = _acl_share(tmp_path)
+    bindir = _fake_bin(tmp_path, ACL_FAKES)
+    r = _run("named-acls.sh", ["--apply"], bindir, NFS_ROOT=str(root))
+    assert r.returncode == 0, r.stderr
+    sets = [c for c in _calls(tmp_path).splitlines() if c.startswith("setfacl")]
+    alice = f"{root}/users/alice"
+    for name in ("iit", "daham"):
+        assert f"setfacl -PR -x u:{name} {alice}" in sets
+        assert f"setfacl -P -x d:u:{name} {alice}" in " ".join(sets)
+    assert f"setfacl -PR -x u:iit {root}/models" in sets
+    assert all(c.startswith("setfacl -P") for c in sets)
+    assert not any(f"u:{_whoami()} " in c or "sd-ops" in c or f"u:daham {root}/models" in c
+                   for c in sets)
+    assert not any(f"{root}/link" in c or f"{root}/models/to_alice" in c for c in sets)
+    assert "users/alice: removed" in r.stdout
+
+
+def test_named_acls_apply_fails_when_entries_remain(tmp_path):
+    root = _acl_share(tmp_path)
+    bindir = _fake_bin(tmp_path, ACL_FAKES)
+    r = _run("named-acls.sh", ["--apply"], bindir, NFS_ROOT=str(root), STUBBORN="1")
+    assert r.returncode == 1
+    assert "still present" in r.stderr
+
+
+def test_named_acls_allow_list_keeps_a_name(tmp_path):
+    root = _acl_share(tmp_path)
+    bindir = _fake_bin(tmp_path, ACL_FAKES)
+    r = _run("named-acls.sh", ["--apply", "--allow", "daham"], bindir,
+             NFS_ROOT=str(root), NAMED_ACL_ALLOW="nobody")
+    assert r.returncode == 0, r.stderr
+    calls = _calls(tmp_path)
+    assert "u:daham" not in calls and "u:iit" in calls
+
+
+def test_named_acls_needs_a_mode(tmp_path):
+    bindir = _fake_bin(tmp_path, ACL_FAKES)
+    assert _run("named-acls.sh", [], bindir, NFS_ROOT=str(tmp_path)).returncode != 0
+    assert _run("named-acls.sh", ["--check", "--bogus"], bindir,
+                NFS_ROOT=str(tmp_path)).returncode != 0
+
+
 # ── service-accounts.sh ──────────────────────────────────────────────────────
 
 def test_service_accounts_check_changes_nothing(tmp_path):

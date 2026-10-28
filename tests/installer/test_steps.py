@@ -203,7 +203,7 @@ def test_harden_checks_every_script_on_its_node_then_applies_when_confirmed(ctx)
     assert [re.search(r"harden/([\w-]+)\.sh", c)[1] for c in login_checks] == [
         "remove-docker-group", "service-accounts"]
     assert [re.search(r"harden/([\w-]+)\.sh", c)[1] for c in gpu_checks] == [
-        "remove-docker-group", "service-accounts", "shared-areas"]
+        "remove-docker-group", "service-accounts", "shared-areas", "named-acls"]
     for t in (ctx.login, ctx.gpu):
         checks, applies = _harden_runs(t, "check"), _harden_runs(t, "apply")
         assert len(applies) == len(checks)
