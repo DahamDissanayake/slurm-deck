@@ -1,0 +1,16 @@
+[Unit]
+Description=Slurm Deck: only root (deck-agent) reaches Postgres on the login node
+# Up before the database port is published, and loaded again whenever the
+# site's nftables.service reloads (its flush ruleset would drop the table).
+Before=docker.service
+After=nftables.service
+PartOf=nftables.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f /usr/local/lib/slurm-deck/sd-db-port.nft
+ExecStop=/usr/sbin/nft delete table inet sd_db
+
+[Install]
+WantedBy=multi-user.target
