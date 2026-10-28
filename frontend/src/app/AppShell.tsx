@@ -1,21 +1,18 @@
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 
-import { getMe, type Me, signOut, stopViewing } from "../api/auth";
-import { iconButton, KeyIcon, SignOutIcon } from "../components/icons";
-import { Wordmark } from "../components/Wordmark";
-import { Link, navigate, useLocation } from "./navigation";
-import { ThemeToggle } from "./ThemeToggle";
-import { ViewAsBanner } from "./ViewAsBanner";
+import { getMe, type Me, stopViewing } from "../api/auth";
+import { useLive } from "../api/live";
+import { useLocation } from "./navigation";
+import { Drawer, navFor, Sidebar, useRailExpanded } from "./Sidebar";
+import { TopBar } from "./TopBar";
 
-const NAV = [
-  ["/", "Dashboard"], ["/new", "New job"], ["/jobs", "Jobs"], ["/files", "Files"],
-  ["/envs", "Environments"], ["/models", "Models"], ["/services", "Services"],
-  ["/usage", "Usage"], ["/notify", "Notify"],
-] as const;
-
-/** The signed-in frame: sidebar, top bar and the View-as banner. */
+/** The signed-in frame: the icon rail (a drawer on small screens), the top
+ * bar and a page container. */
 export function AppShell({ children }: { children: ReactNode }) {
   const [me, setMe] = useState<Me | null>(null);
+  const [expanded, toggle] = useRailExpanded();
+  const [drawer, setDrawer] = useState(false);
+  const live = useLive();
   const { pathname } = useLocation();
   const load = useCallback(() => {
     getMe().then(setMe).catch(() => {});   // a 401 has already gone to /sign-in
@@ -23,39 +20,16 @@ export function AppShell({ children }: { children: ReactNode }) {
   useEffect(load, [load]);
 
   if (!me) return <div className="p-8 text-text-dim">Loading…</div>;
-  const nav = me.account.role === "admin" ? [...NAV, ["/admin", "Admin"] as const] : NAV;
-  const active = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
+  const nav = navFor(me.account.role);
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <ViewAsBanner actingAs={me.acting_as?.username ?? null}
-                    onStop={() => stopViewing().then(load)} />
-      <header className="flex items-center justify-between border-b border-border bg-surface px-4 py-3">
-        <Link href="/"><Wordmark /></Link>
-        <div id="cluster-status" className="text-sm text-text-dim" />
-        <div className="flex items-center gap-3 text-sm">
-          <Link href="/about" className="text-text-dim hover:text-accent">About</Link>
-          <ThemeToggle />
-          <span className="text-text-dim">{me.account.full_name}</span>
-          <Link href="/account/password" className={iconButton} title="Change password"
-                aria-label="Change password"><KeyIcon /></Link>
-          <button type="button" className={iconButton} title="Sign out" aria-label="Sign out"
-                  onClick={() => signOut().finally(() => navigate("/sign-in"))}>
-            <SignOutIcon />
-          </button>
-        </div>
-      </header>
-      <div className="flex flex-1">
-        <nav aria-label="Main" className="w-52 border-r border-border bg-surface p-3">
-          {nav.map(([href, label]) => (
-            <Link key={href} href={href}
-                  className={`block rounded-sm px-3 py-2 text-sm ${active(href)
-                    ? "bg-surface-2 text-accent" : "text-text-dim hover:text-text"}`}>
-              {label}
-            </Link>
-          ))}
-        </nav>
-        <main className="flex-1 p-6">{children}</main>
+    <div className="flex min-h-screen bg-bg">
+      <Sidebar items={nav} pathname={pathname} expanded={expanded} onToggle={toggle} />
+      {drawer && <Drawer items={nav} pathname={pathname} onClose={() => setDrawer(false)} />}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <TopBar pathname={pathname} name={me.account.full_name} actingAs={me.acting_as?.username ?? null}
+                live={live} onMenu={() => setDrawer(true)} onStopViewing={() => stopViewing().then(load)} />
+        <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 md:px-8">{children}</main>
       </div>
     </div>
   );

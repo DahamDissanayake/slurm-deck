@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { iconButton, MoonIcon, SunIcon } from "../components/icons";
+import { MoonIcon, SunIcon } from "../components/icons";
+import { IconButton } from "../components/ui/IconButton";
 
 const KEY = "sd-theme";
 type Theme = "light" | "dark";
@@ -40,18 +41,15 @@ export function ThemeToggle() {
   const next: Theme = theme === "dark" ? "light" : "dark";
   const label = next === "light" ? "Light theme" : "Dark theme";
   return (
-    <button
-      type="button"
-      className={iconButton}
-      title={label}
-      aria-label={label}
+    <IconButton
+      label={label}
+      icon={next === "light" ? <SunIcon /> : <MoonIcon />}
+      tooltipSide="bottom"
       onClick={() => {
         document.documentElement.dataset.theme = next;
         remember(next);
         setTheme(next);
       }}
-    >
-      {next === "light" ? <SunIcon /> : <MoonIcon />}
-    </button>
+    />
   );
 }
