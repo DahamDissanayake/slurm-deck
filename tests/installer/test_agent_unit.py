@@ -44,6 +44,12 @@ def test_the_unit_is_sandboxed():
     assert s["RuntimeDirectory"] == s["LogsDirectory"] == "slurm-deck-web"
 
 
+def test_the_unit_runs_as_root_without_a_user_line():
+    # SLURM-74: User= with NoNewPrivileges and the sandbox makes systemd drop
+    # CAP_SETUID from the permitted set, so every run-as-user call fails.
+    assert "User" not in _service()
+
+
 @pytest.mark.skipif(shutil.which("systemd-analyze") is None, reason="needs systemd-analyze")
 def test_systemd_accepts_the_unit():
     r = subprocess.run(["systemd-analyze", "verify", "--man=no", str(UNIT)],
