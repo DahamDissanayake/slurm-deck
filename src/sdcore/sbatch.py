@@ -2,8 +2,11 @@
 
 Ported from legacy/v1.4-tui slurmdeck/jobs.py (JobSpec, gres_directive,
 render_sbatch, pip_install_block). Changes from legacy:
-- the job starts from a clean environment (`--export=NONE`) with HOME, USER
-  and PATH set explicitly, before any module load or env activation;
+- the job starts from a clean environment (`--export=NIL`) with HOME, USER,
+  LOGNAME, PATH and LANG set explicitly, before any module load or env
+  activation. Not NONE: that makes slurmd load the user's login environment
+  through a login shell, and web accounts have the shell nologin, so Slurm
+  holds the job (`user env retrieval failed requeued held`);
 - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True when the job has a GPU pod;
 - every path and value placed in shell code is shlex-quoted, and #SBATCH values
   that could add a directive (whitespace, control characters) are refused.
@@ -128,13 +131,16 @@ def pip_install_block(requirements: str, packages: str) -> str:
 
 
 def _clean_env(home: str, user: str, gpu: bool) -> list[str]:
-    """Start clean: nothing from the submitting process leaks into the job."""
+    """Start clean: nothing from the submitting process or a login profile
+    reaches the job (NIL passes only SLURM_* variables), so set what it needs."""
     lines = [
-        "#SBATCH --export=NONE",
+        "#SBATCH --export=NIL",
         "",
         f"export HOME={shlex.quote(home)}",
         f"export USER={shlex.quote(user)}",
+        f"export LOGNAME={shlex.quote(user)}",
         "export PATH=/usr/local/bin:/usr/bin:/bin",
+        "export LANG=C.UTF-8",
     ]
     if gpu:
         # Pods share one GPU; expandable segments cut fragmentation-driven OOMs.
@@ -187,6 +193,14 @@ def _header(spec: JobSpec, folder: str, home: str, mail_types: str) -> list[str]
     ]
 
 
+# `module` is a shell function a login profile defines; NIL never runs one.
+_MODULE_INIT = """if ! type module >/dev/null 2>&1; then
+    for _sd_init in /etc/profile.d/lmod.sh /etc/profile.d/modules.sh; do
+        [ -f "$_sd_init" ] && . "$_sd_init" && break
+    done
+fi"""
+
+
 def render_batch(spec: JobSpec, folder: str, home: str, mail_types: str, *,
                  nfs_root: str = "/shared") -> str:
     """The sbatch script for a batch job running in `folder`.
@@ -196,6 +210,8 @@ def render_batch(spec: JobSpec, folder: str, home: str, mail_types: str, *,
     q = shlex.quote
     lines = _header(spec, folder, home, mail_types)
 
+    if spec.modules:
+        lines.append(_MODULE_INIT)
     for mod in spec.modules:
         lines.append(f"module load {q(mod)}")
     if spec.modules:

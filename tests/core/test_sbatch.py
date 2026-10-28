@@ -51,7 +51,7 @@ def render(s: JobSpec, folder: str = FOLDER, **kw) -> str:
 def test_batch_sets_clean_env_and_home():
     s = render_batch(spec(user="amasha"), "/shared/jobs/amasha/t_1", home="/home/amasha",
                      mail_types="END,FAIL")
-    assert "#SBATCH --export=NONE" in s and "export HOME=/home/amasha" in s
+    assert "#SBATCH --export=NIL" in s and "export HOME=/home/amasha" in s
     assert "export USER=amasha" in s and "export PATH=/usr/local/bin:/usr/bin:/bin" in s
     assert s.index("export HOME=") < s.index("conda activate")
     assert s.index("export HOME=") < s.index("module load")
@@ -201,7 +201,7 @@ def test_smoke_uses_the_fixed_small_allocation():
     s = _smoke()
     for line in ("#SBATCH --gres=shard:1", "#SBATCH --cpus-per-task=4", "#SBATCH --mem=8G",
                  "#SBATCH --time=00:30:00", "#SBATCH --partition=gpu",
-                 "#SBATCH --export=NONE", "conda activate /shared/envs/pt"):
+                 "#SBATCH --export=NIL", "conda activate /shared/envs/pt"):
         assert line in s, line
     assert s.index("export HOME=/home/amasha") < s.index("conda activate")
 
