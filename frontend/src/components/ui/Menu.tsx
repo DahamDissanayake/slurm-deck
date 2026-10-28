@@ -11,8 +11,8 @@ const ITEM = "[role=menuitem]:not([disabled])";
 /** A dropdown of actions behind an icon button named `label`. Arrow keys,
  * Home and End move between items, Escape closes and returns focus, a click
  * outside closes. */
-export function Menu({ label, items, icon = <MoreIcon />, align = "end" }: {
-  label: string; items: MenuItem[]; icon?: ReactNode; align?: "start" | "end";
+export function Menu({ label, items, icon = <MoreIcon />, align = "end", tooltipSide }: {
+  label: string; items: MenuItem[]; icon?: ReactNode; align?: "start" | "end"; tooltipSide?: "top" | "bottom";
 }) {
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
@@ -42,7 +42,7 @@ export function Menu({ label, items, icon = <MoreIcon />, align = "end" }: {
 
   return (
     <div ref={wrap} className="relative inline-flex">
-      <IconButton ref={trigger} label={label} icon={icon} aria-haspopup="menu" aria-expanded={open}
+      <IconButton ref={trigger} label={label} icon={icon} tooltipSide={tooltipSide} aria-haspopup="menu" aria-expanded={open}
                   aria-controls={open ? id : undefined} onClick={() => setOpen((o) => !o)} />
       {open && (
         <div ref={list} id={id} role="menu" aria-label={label} onKeyDown={onKeyDown}

@@ -103,12 +103,14 @@ describe("mobile drawer", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Open menu" }));
     const drawer = screen.getByRole("dialog", { name: "Menu" });
-    expect(within(drawer).getAllByRole("link").map((l) => l.textContent)).toEqual(USER_NAV);
+    const nav = within(drawer).getByRole("navigation", { name: "Main menu" });
+    expect(within(nav).getAllByRole("link").map((l) => l.textContent)).toEqual(USER_NAV);
+    expect(within(nav).getByRole("link", { name: "Dashboard" })).toHaveFocus();
     fireEvent.keyDown(drawer, { key: "Escape" });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Open menu" }));
-    fireEvent.click(within(screen.getByRole("dialog")).getByRole("link", { name: "Files" }));
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Main menu" })).getByRole("link", { name: "Files" }));
     expect(window.location.pathname).toBe("/files");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });

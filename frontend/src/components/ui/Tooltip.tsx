@@ -6,7 +6,7 @@ import { cx } from "./cx";
  * it. `describe` links it as the child's description; leave it off when the
  * child is already named by the same text (IconButton). */
 export function Tooltip({ content, children, describe = true, side = "top" }: {
-  content: ReactNode; children: ReactNode; describe?: boolean; side?: "top" | "bottom";
+  content: ReactNode; children: ReactNode; describe?: boolean; side?: "top" | "bottom" | "right";
 }) {
   const id = useId();
   const [open, setOpen] = useState(false);
@@ -18,9 +18,10 @@ export function Tooltip({ content, children, describe = true, side = "top" }: {
       {children}
       {open && (
         <span role="tooltip" id={id}
-              className={cx("pointer-events-none absolute left-1/2 z-50 -translate-x-1/2 whitespace-nowrap rounded-sm",
+              className={cx("pointer-events-none absolute z-50 whitespace-nowrap rounded-sm",
                 "bg-text px-2 py-1 text-xs font-medium text-bg shadow-md",
-                side === "top" ? "bottom-full mb-1.5" : "top-full mt-1.5")}>
+                side === "right" ? "left-full top-1/2 ml-2 -translate-y-1/2" : "left-1/2 -translate-x-1/2",
+                side === "top" && "bottom-full mb-1.5", side === "bottom" && "top-full mt-1.5")}>
           {content}
         </span>
       )}
