@@ -129,8 +129,10 @@ def test_pg_session_store_reads_the_real_view(pg_db):
     assert row is not None
     assert (row.username, row.role, row.uid, row.status) == ("dinuka", "admin", 20010, "active")
     assert row.last_seen_at == NOW and row.acting_as_username == "amasha"
+    assert row.email == "dinuka@x.com"
     acct = store.account("amasha")
     assert acct is not None and (acct.linux_kind, acct.uid) == ("hidden", 20011)
+    assert acct.email == "amasha@x.com"
     assert store.lookup(hash_token("other")) is None and store.account("nobody") is None
 
 

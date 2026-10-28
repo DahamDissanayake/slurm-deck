@@ -41,6 +41,7 @@ class SessionRow:
     created_at: datetime
     last_seen_at: datetime
     acting_as_username: str | None
+    email: str | None = None
 
 
 class SessionStore(Protocol):
@@ -54,7 +55,7 @@ def hash_token(raw: str) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
-_FIELDS = "username, role, linux_kind, uid, status, created_at, last_seen_at"
+_FIELDS = "username, role, linux_kind, uid, status, created_at, last_seen_at, email"
 
 
 class PgSessionStore:
@@ -73,7 +74,7 @@ class PgSessionStore:
     def lookup(self, token_hash: str) -> SessionRow | None:
         row = self._one(f"SELECT {_FIELDS}, acting_as_username FROM agent_sessions "
                         "WHERE token_hash = %s", token_hash)
-        return _to_row(row, row[7]) if row else None
+        return _to_row(row, row[8]) if row else None
 
     def account(self, username: str) -> SessionRow | None:
         row = self._one(f"SELECT {_FIELDS} FROM agent_accounts WHERE username = %s", username)
@@ -87,7 +88,8 @@ class PgSessionStore:
 
 def _to_row(v: tuple[Any, ...], acting_as: str | None) -> SessionRow:
     return SessionRow(username=v[0], role=v[1], linux_kind=v[2], uid=v[3], status=v[4],
-                      created_at=v[5], last_seen_at=v[6], acting_as_username=acting_as)
+                      created_at=v[5], last_seen_at=v[6], email=v[7],
+                      acting_as_username=acting_as)
 
 
 def read_admins(path: str, owner_uid: int = 0) -> frozenset[str]:
@@ -150,7 +152,7 @@ def resolve_caller(peer_uid: int, headers: Mapping[str, str], store: SessionStor
             role = "user"
 
     if row.acting_as_username is None:
-        return Caller(row.username, role, row.linux_kind, False, None)
+        return Caller(row.username, role, row.linux_kind, False, None, row.email)
 
     if role != "admin":
         raise AgentError("not_allowed", "Only admins can view as another user.", 403)
@@ -158,4 +160,5 @@ def resolve_caller(peer_uid: int, headers: Mapping[str, str], store: SessionStor
     if (target is None or target.status != "active" or target.role != "user"
             or target.linux_kind == "shell"):
         raise AgentError("not_allowed", "You can't view as that account.", 403)
-    return Caller(target.username, target.role, target.linux_kind, False, row.username)
+    return Caller(target.username, target.role, target.linux_kind, False, row.username,
+                  target.email)
