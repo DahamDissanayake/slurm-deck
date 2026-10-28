@@ -29,12 +29,26 @@ PLAIN = ("sacct", "sacctmgr", "scancel", "sbatch", "useradd", "groupadd", "userd
          "groupdel", "passwd", "pkill")
 
 
+class FakeStore:
+    """Every account is an active user unless its name is in disabled."""
+
+    def __init__(self) -> None:
+        self.disabled: set[str] = set()
+
+    def account(self, username: str) -> Any:
+        from types import SimpleNamespace
+
+        status = "disabled" if username in self.disabled else "active"
+        return SimpleNamespace(username=username, role="user", status=status)
+
+
 @dataclass
 class Agent:
     path: str
     log: Path
     dir: Path
     config: Any
+    store: FakeStore
 
     def calls(self) -> str:
         return self.log.read_text() if self.log.exists() else ""
@@ -82,11 +96,15 @@ def agent(tmp_path, monkeypatch):
            "SD_NFS_ROOT": str(tmp_path / "shared"), "SD_AUDIT_LOG": str(tmp_path / "audit"),
            "SD_GPU_HELPER_SSH": "sdprov@gpu-host", "SD_GPU_HELPER_KEY": "/k",
            "SD_GRANT_KEY_FILE": str(tmp_path / "grant.key")}
-    server = AgentServer(load_config(env), store=None, resolve=resolve)
+    from deckagent.verbs.files import ACTIVE_ACCOUNTS
+
+    ACTIVE_ACCOUNTS.clear()
+    store = FakeStore()
+    server = AgentServer(load_config(env), store=store, resolve=resolve)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
-        yield Agent(env["SD_AGENT_SOCKET"], log, tmp_path, server.config)
+        yield Agent(env["SD_AGENT_SOCKET"], log, tmp_path, server.config, store)
     finally:
         server.shutdown()
         thread.join(5)

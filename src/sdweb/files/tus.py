@@ -34,7 +34,7 @@ UserWrite = Annotated[SessionCtx, Depends(require_csrf)]
 TUS = {"Tus-Resumable": "1.0.0"}
 GIB = 1024 ** 3
 RESUME = timedelta(hours=24)
-GRANT_LIFE = timedelta(hours=6)          # deckagent.grants.GRANT_SECONDS
+GRANT_LIFE = timedelta(minutes=30)       # deckagent.grants.GRANT_SECONDS
 REGRANT_BEFORE = timedelta(minutes=10)
 
 
