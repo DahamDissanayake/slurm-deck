@@ -36,14 +36,18 @@ BAD_SOURCE = 18   # ... for "the source is a link, or leaves the user's folder"
 # share root itself may be one) and inside one user's folder. The copy is made
 # from the resolved path and checked again afterwards, so a link swapped in
 # while copying is caught. Copies beside the target first, so a failed copy
-# never leaves a half-replaced asset.
-PUBLISH = ('set -e; root=$(realpath -e -- "$4") || exit 18; '
+# never leaves a half-replaced asset. The copy goes through tar with setuid and
+# setgid stripped: a published file must not run as sd-ops, and deck-agent's
+# RestrictSUIDSGID refuses any mkdir or chmod that would keep those bits.
+PUBLISH = ('set -eo pipefail; root=$(realpath -e -- "$4") || exit 18; '
            'real=$(realpath -e -- "$1") || exit 18; '
            'case "$1" in "$4"/?*) ;; *) exit 18;; esac; '
            '[ "$real" = "$root/${1#"$4"/}" ] || exit 18; '
            'case "$real" in "$root"/?*) ;; *) exit 18;; esac; '
-           'if [ -e "$2" ] && [ "$3" != 1 ]; then exit 17; fi; rm -rf -- "$2.new"; '
-           'cp -a --reflink=auto -- "$real" "$2.new"; '
+           'if [ -e "$2" ] && [ "$3" != 1 ]; then exit 17; fi; rm -rf -- "$2.new" "$2.tmp"; '
+           'mkdir -- "$2.tmp"; base=$(basename -- "$real"); '
+           'tar -C "$(dirname -- "$real")" --mode=ug-s -cf - -- "$base" | tar -C "$2.tmp" -xf -; '
+           'mv -- "$2.tmp/$base" "$2.new"; rmdir -- "$2.tmp"; '
            'if [ "$(realpath -e -- "$1")" != "$real" ]; then rm -rf -- "$2.new"; exit 18; fi; '
            'rm -rf -- "$2"; mv -- "$2.new" "$2"')
 
@@ -244,7 +248,7 @@ def publish_shared(ctx: RequestContext, payload: dict[str, Any]) -> dict[str, An
     src = posixpath.normpath(str(payload.get("src", "")))
     if not src.startswith(users + "/"):
         raise _bad("bad_source", "Only something from a user's own area can be published.")
-    r = run_as(_ops_identity(ctx), ["sh", "-c", PUBLISH, "sh", src, dest,
+    r = run_as(_ops_identity(ctx), ["bash", "-c", PUBLISH, "bash", src, dest,
                                     "1" if payload.get("replace") is True else "0", users],
                timeout=3600)
     if r.returncode == EXISTS:

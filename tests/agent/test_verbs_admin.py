@@ -1,5 +1,6 @@
 """admin.* verbs against fake Slurm, systemctl, runuser and ssh commands."""
 
+import os
 import subprocess
 
 import pytest
@@ -128,6 +129,37 @@ def test_publish_refuses_an_existing_name_unless_replace_is_chosen(admin):
     assert (admin.dir / "shared/models/llama/w.bin").read_text() == "two"
     call(admin, "admin.unpublish_shared", {"area": "models", "name": "llama"})
     assert not (admin.dir / "shared/models/llama").exists()
+
+
+def test_publish_copies_without_setuid_or_setgid_bits(admin):
+    # deck-agent runs with RestrictSUIDSGID=yes, so a copy that kept the setgid
+    # bit of a user's folder (2770) would be refused; modes go through the umask.
+    src = admin.dir / "shared/users/amasha/env"
+    (src / "bin").mkdir(parents=True)
+    (admin.dir / "shared/envs").mkdir()
+    (src / "bin/run").write_text("#!/bin/sh\n")
+    (src / "bin/run").chmod(0o4755)
+    (src / "bin").chmod(0o2770)
+    src.chmod(0o2770)
+    call(admin, "admin.publish_shared", {"src": str(src), "area": "envs", "name": "env"})
+    dest = admin.dir / "shared/envs/env"
+    for path in (dest, dest / "bin", dest / "bin/run"):
+        assert path.stat().st_mode & 0o6000 == 0, path
+    assert (dest / "bin/run").stat().st_mode & 0o111 == 0o111   # still runnable
+
+
+def test_publish_that_cannot_read_the_source_publishes_nothing(admin):
+    if os.geteuid() == 0:
+        pytest.skip("root reads everything")
+    src = admin.dir / "shared/users/amasha/half"
+    src.mkdir(parents=True)
+    (admin.dir / "shared/models").mkdir()
+    (src / "a").write_text("a")
+    (src / "secret").write_text("b")
+    (src / "secret").chmod(0)
+    args = {"src": str(src), "area": "models", "name": "half"}
+    assert status(admin, "admin.publish_shared", args).code == "publish_failed"
+    assert not (admin.dir / "shared/models/half").exists()
 
 
 def test_publish_rejects_a_source_outside_user_areas_and_bad_names(admin):

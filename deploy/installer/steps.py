@@ -305,6 +305,10 @@ def agent(ctx: Ctx) -> None:
     ctx.login.run(f"{venv}/bin/pip install -q {shlex.quote(str(ctx.repo) + '[agent]')}")
     ctx.login.write("/etc/systemd/system/deck-agent.service",
                     (ctx.repo / "deploy/systemd/deck-agent.service").read_text())
+    # The unit can write only the NFS root it lists (/shared); this adds the site's.
+    ctx.login.run("install -d /etc/systemd/system/deck-agent.service.d")
+    ctx.login.write("/etc/systemd/system/deck-agent.service.d/nfs-root.conf",
+                    f"[Service]\nReadWritePaths={ctx.answers['nfs_root']}\n")
     ctx.login.run("systemctl daemon-reload && systemctl enable deck-agent && systemctl restart deck-agent")
     call = ("curl -sf --unix-socket /run/slurm-deck-web/agent.sock -X POST "
             "-H 'Content-Type: application/json' -d '{}' http://agent/v1/cluster.disk_free")

@@ -45,6 +45,18 @@ def test_run_as_input_and_popen(tmp_user):
         assert p.stdout is not None and p.stdout.read().strip() == tmp_user.name.encode()
 
 
+@pytest.mark.root
+def test_run_as_keeps_user_umask_under_the_agent_umask(tmp_user):
+    # The unit runs deck-agent with UMask=0077; user work keeps the usual 022.
+    old = os.umask(0o077)
+    try:
+        assert run_as(tmp_user, ["sh", "-c", "umask"]).stdout.strip() == b"0022"
+        with popen_as(tmp_user, ["sh", "-c", "umask"], stdout=subprocess.PIPE) as p:
+            assert p.stdout is not None and p.stdout.read().strip() == b"0022"
+    finally:
+        os.umask(old)
+
+
 def test_run_as_needs_root_when_not_root():
     if os.geteuid() == 0:
         pytest.skip("only meaningful as a normal user")

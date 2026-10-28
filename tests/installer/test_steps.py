@@ -112,6 +112,17 @@ def test_secret_files_get_the_documented_modes(ctx):
     assert f"chmod 0600 {d}/sdprov_ed25519" in " ".join(ctx.login.cmds)   # the GPU-host key
 
 
+def test_deck_agent_may_write_the_sites_nfs_root(ctx):
+    # The unit is ProtectSystem=strict; only the NFS root the site gave is writable.
+    ctx.state.data["answers"]["nfs_root"] = "/data/nfs"
+    steps.run_all(ctx)
+    conf = "/etc/systemd/system/deck-agent.service.d/nfs-root.conf"
+    written = [i for c, i in zip(ctx.login.cmds, ctx.login.inputs) if f"mv {conf}.new" in c]
+    assert written == ["[Service]\nReadWritePaths=/data/nfs\n"]
+    reload = next(i for i, c in enumerate(ctx.login.cmds) if "restart deck-agent" in c)
+    assert ctx.login.cmds.index(next(c for c in ctx.login.cmds if f"mv {conf}.new" in c)) < reload
+
+
 def test_the_first_admin_is_listed_in_the_admins_file_before_create_admin(ctx):
     steps.run_all(ctx)
     add = next(i for i, c in enumerate(ctx.login.cmds) if "/etc/slurm-deck-web/admins" in c)
