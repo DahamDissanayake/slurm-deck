@@ -8,7 +8,7 @@ import secrets
 import shlex
 import subprocess
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from typing import Any, TypeVar
 
 import httpx
