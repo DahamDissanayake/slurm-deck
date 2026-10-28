@@ -119,11 +119,13 @@ def test_templates_never_contain_an_empty_required_value():
               "slurm_account": "default", "slurm_qos": "normal",
               "web_gid": 1, "worker_uid": 2, "worker_gid": 2, "db_password": "x",
               "agent_db_password": "y", "compose_dir": "/srv/deploy", "agent_gid": 3,
-              "session_hostname": "sessions.deck.example.org"}
+              "session_hostname": "sessions.deck.example.org",
+              **{k: "x" for k in steps.MAIL_SECRETS}}
     for tmpl in sorted(steps.TEMPLATES.glob("*.tmpl")):
         assert not re.search(r"=$", steps.render(tmpl.name, {**values, "mail_from": "x"}), re.M)
         with pytest.raises(steps.InstallError):
-            steps.render(tmpl.name, {**values, **{k: "" for k in values if k != "mail_from"}})
+            steps.render(tmpl.name,
+                         {**values, **{k: "" for k in values if k not in steps.OPTIONAL}})
 
 
 MODE = re.compile(r"chown (\S+) (\S+)\.new && chmod (\d+) \2\.new")
@@ -276,3 +278,89 @@ def test_harden_comes_after_the_accounts_it_needs_and_before_the_summary():
     names = [n for n, _ in steps.STEPS]
     assert names.index("gpuhost_bootstrap") < names.index("harden") < names.index("summary")
     assert names[-2:] == ["harden", "summary"]
+
+
+def test_preflight_needs_python3_venv(ctx):
+    ctx.login.codes = {"import ensurepip, venv": 1}
+    with pytest.raises(steps.InstallError, match="install python3-venv"):
+        steps.preflight(ctx)
+
+
+def test_agent_rebuilds_a_venv_that_has_no_pip(ctx):
+    steps.agent(ctx)
+    venv = "/opt/slurm-deck-web/agent-venv"
+    assert (f"[ -x {venv}/bin/pip ] || {{ rm -rf {venv}; python3 -m venv {venv}; }}"
+            in ctx.login.cmds)
+
+
+def _secrets_env(ctx):
+    writes = zip(ctx.login.cmds, ctx.login.inputs, strict=True)
+    return [i for c, i in writes if "secrets.env.new" in c][-1]
+
+
+def test_resend_without_an_api_key_is_an_error(ctx):
+    ctx.state.data["answers"]["mail_provider"] = "resend"
+    with pytest.raises(steps.InstallError, match="resend_api_key"):
+        steps.run_all(ctx)
+
+
+def test_resend_key_from_the_answers_file_reaches_secrets_env(ctx):
+    ctx.state.data["answers"]["mail_provider"] = "resend"
+    steps.run_all(ctx, {"resend_api_key": "re_secret123"})
+    env = _secrets_env(ctx)
+    assert "SD_RESEND_API_KEY=re_secret123" in env
+    assert re.search(r"^SD_SMTP_PASSWORD=$", env, re.M)                  # unused: empty
+    assert ctx.state.data["answers"]["resend_api_key"] == "re_secret123"   # kept for reruns
+
+
+def test_smtp_needs_host_port_user_and_password(ctx):
+    ctx.state.data["answers"]["mail_provider"] = "smtp"
+    with pytest.raises(steps.InstallError, match="smtp_host, smtp_password, smtp_port, smtp_user"):
+        steps.run_all(ctx)
+
+
+def test_smtp_answers_reach_secrets_env(ctx):
+    ctx.state.data["answers"]["mail_provider"] = "smtp"
+    steps.run_all(ctx, {"smtp_host": "mail.example.org", "smtp_port": "587",
+                        "smtp_user": "deck", "smtp_password": "pw-secret"})
+    env = _secrets_env(ctx)
+    for line in ("SD_SMTP_HOST=mail.example.org", "SD_SMTP_PORT=587", "SD_SMTP_USER=deck",
+                 "SD_SMTP_PASSWORD=pw-secret", "SD_SMTP_STARTTLS=true"):
+        assert re.search(rf"^{line}$", env, re.M)
+    assert re.search(r"^SD_RESEND_API_KEY=$", env, re.M)
+
+
+def test_smtp_port_must_be_a_number(ctx):
+    ctx.state.data["answers"]["mail_provider"] = "smtp"
+    with pytest.raises(steps.InstallError, match="smtp_port"):
+        steps.run_all(ctx, {"smtp_host": "h", "smtp_port": "smtp", "smtp_user": "u",
+                            "smtp_password": "p"})
+
+
+def test_mail_secrets_are_taken_on_a_rerun_after_site_values_is_done(ctx):
+    # The live install resumes past site_values; the key comes in the answers file then.
+    steps.run_all(ctx)
+    ctx.state.data["answers"]["mail_provider"] = "resend"
+    steps.run_all(ctx, {"resend_api_key": "re_later"})
+    assert "SD_RESEND_API_KEY=re_later" in _secrets_env(ctx)
+
+
+def test_mail_secrets_are_asked_hidden_on_a_terminal(ctx, monkeypatch):
+    ctx.state.data["answers"]["mail_provider"] = "resend"
+    monkeypatch.setattr(steps.sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda prompt="": pytest.fail("input() echoes"))
+    monkeypatch.setattr(steps.getpass, "getpass", lambda prompt="": "re_typed")
+    steps.mail_secrets(ctx)
+    assert ctx.state.data["answers"]["resend_api_key"] == "re_typed"
+
+
+def test_check_never_shows_the_mail_secrets(ctx, capsys):
+    ctx.state.data["answers"].update(mail_provider="smtp", smtp_host="h", smtp_port="25",
+                                     smtp_user="u", smtp_password="pw-secret",
+                                     resend_api_key="re_secret123")
+    logged = []
+    login = ctx.login
+    ctx.check, ctx.login, ctx.log = True, steps.Dry(login, ctx.planned), logged.append
+    steps.run_all(ctx)
+    shown = "\n".join(ctx.planned + logged) + capsys.readouterr().out
+    assert "pw-secret" not in shown and "re_secret123" not in shown

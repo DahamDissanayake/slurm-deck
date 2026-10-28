@@ -7,6 +7,7 @@ With --check every Target is a Dry one: commands are listed, none is run."""
 
 from __future__ import annotations
 
+import getpass
 import json
 import secrets
 import shlex
@@ -24,7 +25,11 @@ TEMPLATES = Path(__file__).parent / "templates"
 CONF = "/etc/slurm-deck-web"
 KEY = f"{CONF}/sdprov_ed25519"
 OPS_UIDS = range(850, 900)
-OPTIONAL = {"mail_from"}   # the only template values allowed to be empty
+# Template values allowed to be empty: the mail address, and the credentials of the
+# mail providers that aren't in use.
+MAIL_SECRETS = ("resend_api_key", "smtp_host", "smtp_port", "smtp_user", "smtp_password",
+                "smtp_starttls")
+OPTIONAL = {"mail_from", *MAIL_SECRETS}
 
 
 class InstallError(Exception):
@@ -160,6 +165,8 @@ def preflight(ctx: Ctx) -> None:
         ("Docker with Compose v2", "docker compose version >/dev/null", False),
         ("nftables (nft)", "command -v nft >/dev/null", False),
         ("Python 3.11 or newer", "python3 -c 'import sys; sys.exit(sys.version_info < (3, 11))'", False),
+        # Ubuntu ships these in python3-venv; without it `python3 -m venv` stops half-way.
+        ("venv support (install python3-venv)", "python3 -c 'import ensurepip, venv'", False),
     ]
     for what, test, soft in checks:
         if ctx.login.run(test, check=False).returncode == 0:
@@ -193,6 +200,49 @@ def site_values(ctx: Ctx, given: dict[str, Any] | None = None) -> None:
         raise InstallError("site_values: the session hostname must differ from the public one")
     if ctx.login.run(f"mountpoint -q {shlex.quote(answers['nfs_root'])}", check=False).returncode:
         raise InstallError(f"site_values: {answers['nfs_root']} is not a mounted share")
+    ctx.state.data["answers"] = answers
+    if not ctx.check:
+        ctx.state.save()
+
+
+# Per provider: (key, prompt, hidden, default); no default means the answer is required.
+MAIL_FIELDS: dict[str, list[tuple[str, str, bool, str | None]]] = {
+    "resend": [("resend_api_key", "Resend API key", True, None)],
+    "smtp": [("smtp_host", "SMTP host", False, None),
+             ("smtp_port", "SMTP port", False, None),
+             ("smtp_user", "SMTP user", False, None),
+             ("smtp_password", "SMTP password", True, None),
+             ("smtp_starttls", "SMTP STARTTLS (true or false)", False, "true")],
+}
+
+
+def mail_secrets(ctx: Ctx, given: dict[str, Any] | None = None) -> None:
+    """The chosen mail provider's credentials: from the answers file, or asked on a
+    terminal (the key and password hidden). Kept with the answers in the state file
+    (root 0600), so a rerun writes the same ones. Runs with the secrets step, so a
+    resumed install that is past site_values still takes them."""
+    answers = {**ctx.state.data["answers"],
+               **{k: v for k, v in (given or {}).items() if k in MAIL_SECRETS}}
+    missing = []
+    for key, prompt, hidden, default in MAIL_FIELDS.get(str(answers.get("mail_provider")), []):
+        if str(answers.get(key) or "").strip():
+            continue
+        value = default
+        if sys.stdin.isatty():
+            try:
+                typed = (getpass.getpass if hidden else input)(f"{prompt}: ").strip()
+                value = typed or default
+            except EOFError:
+                pass
+        if value is None:
+            missing.append(key)
+        else:
+            answers[key] = value
+    if missing:
+        raise InstallError(f"mail: mail_provider {answers['mail_provider']} needs "
+                           f"{', '.join(sorted(missing))}; give them in the --answers file")
+    if answers.get("mail_provider") == "smtp" and not str(answers["smtp_port"]).strip().isdigit():
+        raise InstallError(f"mail: smtp_port must be a number, got {answers['smtp_port']!r}")
     ctx.state.data["answers"] = answers
     if not ctx.check:
         ctx.state.save()
@@ -289,7 +339,8 @@ def admins_add_cmd(path: str, username: str, owner: str = "root:root") -> str:
             f"&& (grep -qxF -- {u} {p} || printf '%s\\n' {u} >> {p})")
 
 
-def secrets_step(ctx: Ctx) -> None:
+def secrets_step(ctx: Ctx, given: dict[str, Any] | None = None) -> None:
+    mail_secrets(ctx, given)
     v, admin = _values(ctx), ctx.answers["admin_unix_user"]
     web_owner = f"{admin}:sdweb"
     ctx.login.run(f"install -d -m 0755 {CONF}")
@@ -305,7 +356,8 @@ def secrets_step(ctx: Ctx) -> None:
 def agent(ctx: Ctx) -> None:
     venv, admin = "/opt/slurm-deck-web/agent-venv", ctx.answers["admin_unix_user"]
     ctx.login.run(f"install -d -o {shlex.quote(admin)} /opt/slurm-deck-web")
-    ctx.login.run(f"[ -x {venv}/bin/python ] || python3 -m venv {venv}")
+    # No bin/pip means a venv made without python3-venv: make it again.
+    ctx.login.run(f"[ -x {venv}/bin/pip ] || {{ rm -rf {venv}; python3 -m venv {venv}; }}")
     ctx.login.run(f"{venv}/bin/pip install -q {shlex.quote(str(ctx.repo) + '[agent]')}")
     ctx.login.write("/etc/systemd/system/deck-agent.service",
                     (ctx.repo / "deploy/systemd/deck-agent.service").read_text())
@@ -469,7 +521,7 @@ def run_all(ctx: Ctx, given: dict[str, Any] | None = None) -> None:
             continue
         ctx.log(f"==> {name}")
         try:
-            finished = step(ctx, given) if step is site_values else step(ctx)
+            finished = step(ctx, given) if step in (site_values, secrets_step) else step(ctx)
         except InstallError:
             ctx.log(f"{name} failed; fix the cause and run the installer again to resume")
             raise
