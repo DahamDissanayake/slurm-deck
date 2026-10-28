@@ -152,3 +152,23 @@ def test_backups_install_a_timer_for_the_admin_account_in_the_cluster_timezone(c
     assert "OnCalendar=*-*-* 02:30:00 Asia/Colombo" in written and "@CLUSTER_TZ@" not in written
     assert f"ExecStart={REPO}/deploy/cluster/sd-backup.sh" in written and "@REPO@" not in written
     assert "systemctl daemon-reload && systemctl enable --now sd-backup.timer" in ctx.login.cmds
+
+
+def test_db_firewall_is_loaded_before_the_web_stack_publishes_postgres(ctx):
+    steps.run_all(ctx)
+    names = [n for n, _ in steps.STEPS]
+    assert names.index("agent") < names.index("db_firewall") < names.index("web_stack")
+    nft = next(i for i, c in enumerate(ctx.login.cmds) if "sd-db-port.nft.new" in c)
+    up = next(i for i, c in enumerate(ctx.login.cmds) if "docker compose up" in c)
+    assert nft < up
+    written = " ".join(ctx.login.inputs)
+    assert "table inet sd_db" in written and "ExecStart=/usr/sbin/nft -f" in written
+    assert ("systemctl daemon-reload && systemctl enable sd-db-firewall "
+            "&& systemctl restart sd-db-firewall") in ctx.login.cmds
+    assert "nft list table inet sd_db >/dev/null" in ctx.login.cmds
+
+
+def test_preflight_needs_nft_for_the_db_firewall(ctx):
+    ctx.login.codes = {"command -v nft": 1}
+    with pytest.raises(steps.InstallError, match="nftables"):
+        steps.preflight(ctx)

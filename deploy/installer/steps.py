@@ -156,6 +156,7 @@ def preflight(ctx: Ctx) -> None:
         ("sinfo works", "sinfo -h >/dev/null", False),
         ("munge works", "munge -n | unmunge >/dev/null", False),
         ("Docker with Compose v2", "docker compose version >/dev/null", False),
+        ("nftables (nft)", "command -v nft >/dev/null", False),
         ("Python 3.11 or newer", "python3 -c 'import sys; sys.exit(sys.version_info < (3, 11))'", False),
     ]
     for what, test, soft in checks:
@@ -309,6 +310,19 @@ def agent(ctx: Ctx) -> None:
                   "sleep 1; done; exit 1")   # a one-shot call as the worker account
 
 
+def db_firewall(ctx: Ctx) -> None:
+    """Postgres is published on the login node's loopback for deck-agent (root); this
+    nftables table refuses everyone else, there and on the Docker bridges (SLURM-66)."""
+    lib = "/usr/local/lib/slurm-deck"
+    ctx.login.run(f"install -d -m 0755 {lib}")
+    ctx.login.write(f"{lib}/sd-db-port.nft", (ctx.repo / "deploy/cluster/sd-db-port.nft").read_text())
+    ctx.login.write("/etc/systemd/system/sd-db-firewall.service",
+                    (ctx.repo / "deploy/systemd/sd-db-firewall.service").read_text())
+    ctx.login.run("systemctl daemon-reload && systemctl enable sd-db-firewall "
+                  "&& systemctl restart sd-db-firewall")
+    ctx.login.run("nft list table inet sd_db >/dev/null")
+
+
 def web_stack(ctx: Ctx) -> None:
     a, compose = ctx.answers, f"cd {shlex.quote(str(ctx.repo / 'deploy'))} && docker compose"
     ctx.login.run(f"{compose} build && {compose} up -d")   # `up` runs the migration first
@@ -373,7 +387,8 @@ def summary(ctx: Ctx) -> None:
 STEPS: list[tuple[str, Callable[[Ctx], Any]]] = [
     ("preflight", preflight), ("site_values", site_values), ("accounts_login", accounts_login),
     ("gpuhost_bootstrap", gpuhost_bootstrap), ("slurm_assoc", slurm_assoc),
-    ("secrets", secrets_step), ("agent", agent), ("web_stack", web_stack),
+    ("secrets", secrets_step), ("agent", agent), ("db_firewall", db_firewall),
+    ("web_stack", web_stack),
     ("backups", backups), ("network", network), ("summary", summary),
 ]
 

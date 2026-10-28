@@ -41,7 +41,8 @@ services:
       - /etc/slurm-deck-web/secrets.env
     volumes:
       - pgdata:/var/lib/postgresql/data
-    # Loopback only: deck-agent on the host reads the session views here.
+    # Loopback only: deck-agent on the host reads the session views here. The
+    # installer's sd-db-firewall (cluster/sd-db-port.nft) lets only root connect.
     ports:
       - "127.0.0.1:${SD_DB_HOST_PORT:-5432}:5432"
     security_opt:
