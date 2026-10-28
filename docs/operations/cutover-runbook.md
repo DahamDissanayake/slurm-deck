@@ -24,7 +24,7 @@ In this order:
 |---|--------|------|-----------------|----------------|
 | 1 | `remove-docker-group.sh` | login node, then GPU host | the `docker` members, who would be removed, the running containers | removes everyone but `SYSADMINS`, plus the admin account that runs docker compose (login node) and the GPU admin login if it isn't root |
 | 2 | `service-accounts.sh` | login node, then GPU host | whether `sd-stats` exists, the legacy units still installed | creates `sd-stats`, disables `slurm-deck-stats` and `slurm-deck-pod-notify.timer`, runs `sd-stats-writer` as `sd-stats` where `nvidia-smi` exists |
-| 3 | `shared-areas.sh` | GPU host (the NFS server) | per area under `NFS_ROOT`, counts of wrong owners, directory modes, writable files, `gpuusers` ACLs | owner `sd-ops:gpuadmins`, directories `2775`, no group/other write on files, `gpuadmins` ACLs; never `users/` or `jobs/` |
+| 3 | `shared-areas.sh` | GPU host (the NFS server) | per area under `NFS_ROOT` (`envs`, `models`, `datasets`, `data`, `images`, `scripts`, `templates`, `miniforge3`, `training-scripts`), counts of wrong owners, directory modes, writable files, `gpuusers` ACLs, default ACL entries that let a group or other write (`default-acl`); a `tmp:` line when `NFS_ROOT/tmp` exists | owner `sd-ops:gpuadmins`, directories `2775`, no group/other write on files, `gpuadmins` ACLs, default ACL group and other `r-x` on every directory; never `users/`, `jobs/` or `tmp/` |
 
 Before you confirm, read the `--check` output:
 
@@ -33,6 +33,9 @@ Before you confirm, read the `--check` output:
   container a removed user still needs. Their open sessions keep the group until they log out.
 - **Shared areas:** the counts are what you expect, and `sd-ops` exists (the installer creates
   it in `gpuhost_bootstrap`).
+  If a `tmp:` line shows, `NFS_ROOT/tmp` is left over from the TUI and nothing in the
+  platform uses it (environment builds use their own temp folder). Look through it, then
+  remove it by hand; the script never changes or deletes it.
 - **Service accounts:** the TUI's pod notifications stop when the timer is disabled.
 
 After `--apply`, check on each node. `getent group docker` lists only the sysadmins.
