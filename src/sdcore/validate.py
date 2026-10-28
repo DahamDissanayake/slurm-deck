@@ -257,7 +257,7 @@ def validate_sbatch(
       area or job workspace.
     - --mail-user must equal registered_email. Fail closed: with no registered
       address, any non-empty --mail-user is refused.
-    - --uid / --gid / --get-user-env are refused.
+    - --uid / --gid / --get-user-env are refused, and so is any --export but NIL.
     - GPU, pod, CPU and memory requests over the limits get a pre-flight error.
       The pod ceiling comes from node_stats when it knows the pod count.
     """
@@ -285,6 +285,11 @@ def validate_sbatch(
 
         elif key in _IDENTITY_DIRECTIVES:
             errors.append(f"--{key} is not permitted in submitted scripts")
+
+        elif key == "export" and val != "NIL":
+            # NONE asks slurmd for a login environment, which web accounts
+            # (shell nologin) can't give; ALL or a list carries in variables.
+            errors.append(f"only --export=NIL is permitted in submitted scripts; got: {val!r}")
 
         elif key in ("gres", "gpus", "gpus-per-task"):
             try:
