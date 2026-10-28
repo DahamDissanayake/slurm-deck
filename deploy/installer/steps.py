@@ -382,7 +382,8 @@ def network(ctx: Ctx) -> bool:
 # (script, nodes it runs on), in order: shared-areas.sh needs sd-ops (gpuhost_bootstrap).
 HARDENING = [("remove-docker-group.sh", ("login", "gpu")),
              ("service-accounts.sh", ("login", "gpu")),
-             ("shared-areas.sh", ("gpu",))]
+             ("shared-areas.sh", ("gpu",)),
+             ("named-acls.sh", ("gpu",))]
 
 
 def _confirm(question: str) -> bool:
@@ -422,7 +423,8 @@ def harden(ctx: Ctx) -> None:
         ctx.log(f"--- {node}: {script} --check\n"
                 + nodes[node].run(cmd(script, node, "check")).stdout.strip())
     if not ctx.check and not ctx.apply_hardening and not _confirm(
-            "Apply the hardening above (docker group, service accounts, shared areas)?"):
+            "Apply the hardening above (docker group, service accounts, shared areas, "
+            "named-person ACLs)?"):
         raise InstallError("harden: review the --check output above, then run the installer "
                            "again with --apply-hardening (see docs/operations/cutover-runbook.md)")
     for script, node in runs:
