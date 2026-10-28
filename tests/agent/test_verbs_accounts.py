@@ -24,7 +24,10 @@ def test_create_runs_every_step(agent):
         assert line in calls, line
 
 
-def test_create_rolls_back_on_gpuhost_failure(agent):
+def test_create_rolls_back_on_gpuhost_failure(agent, monkeypatch):
+    from deckagent.verbs import accounts
+
+    monkeypatch.setattr(accounts, "_group_exists", lambda name: True)
     (agent.dir / "ssh.failon").write_text("create-folders")
     e = _err(agent, "account.create", {"username": "x", "uid": 20006})
     assert (e.code, e.status) == ("account_create_failed", 502)
@@ -93,3 +96,26 @@ def test_attach_shell_refuses_webusers_and_unknown(agent, monkeypatch):
                         lambda name: (accounts.PosixIdentity(name, 1500, 1500, (), "/h"),
                                       frozenset({"webusers"})))
     assert _err(agent, "account.attach_shell", {"username": "kamal"}).status == 403
+
+
+def test_create_undoes_the_gpuhost_account_when_that_step_fails(agent, monkeypatch):
+    # The helper may create the account and then fail (SLURM-50); delete-account
+    # is safe on a missing account, so the failed step is undone too.
+    from deckagent.verbs import accounts
+
+    monkeypatch.setattr(accounts, "_group_exists", lambda name: True)
+    (agent.dir / "ssh.failon").write_text("create-account")
+    e = _err(agent, "account.create", {"username": "x", "uid": 20007})
+    assert e.code == "account_create_failed"
+    assert "delete-account x" in agent.calls()
+
+
+def test_create_rollback_skips_a_group_userdel_already_removed(agent, monkeypatch, caplog):
+    from deckagent.verbs import accounts
+
+    monkeypatch.setattr(accounts, "_group_exists", lambda name: False)
+    (agent.dir / "ssh.failon").write_text("create-folders")
+    _err(agent, "account.create", {"username": "x", "uid": 20008})
+    calls = agent.calls()
+    assert "userdel x" in calls and "groupdel x" not in calls
+    assert "rollback step failed" not in caplog.text

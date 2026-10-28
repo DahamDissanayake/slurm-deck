@@ -3,7 +3,9 @@ folder, delete.
 
 A new web account is a hidden Linux account on both nodes with the same UID,
 plus a Slurm association. Create runs the steps in order and, if one fails,
-undoes the ones already done, so a retry starts clean.
+undoes the ones already done, so a retry starts clean. The GPU-host account is
+undone even when its own step failed, since the helper may have created it
+before failing.
 """
 
 from __future__ import annotations
@@ -51,6 +53,14 @@ def _exists(name: str) -> bool:
         return False
 
 
+def _group_exists(name: str) -> bool:
+    try:
+        grp.getgrnam(name)
+        return True
+    except KeyError:
+        return False
+
+
 def _groups(name: str) -> set[str]:
     return {g.gr_name for g in grp.getgrall() if name in g.gr_mem}
 
@@ -93,24 +103,33 @@ def create(ctx: RequestContext, payload: dict[str, Any]) -> dict[str, Any]:
     uid = _check_uid(ctx, name, payload.get("uid"), link_existing)
     host = GpuHost(cfg)
     groups = f"{cfg.webusers_group},{cfg.gpuusers_group}"
-    steps: list[tuple[Callable[[], Any], Callable[[], Any] | None]] = [
-        (lambda: run(["groupadd", "-g", str(uid), name]), lambda: run(["groupdel", name])),
+
+    def drop_group() -> None:
+        if _group_exists(name):   # userdel removes the user's private group itself
+            run(["groupdel", name])
+
+    # (action, undo, undo it even when the action itself failed)
+    steps: list[tuple[Callable[[], Any], Callable[[], Any] | None, bool]] = [
+        (lambda: run(["groupadd", "-g", str(uid), name]), drop_group, False),
         (lambda: run(["useradd", "-u", str(uid), "-g", str(uid), "-M", "-d", f"/home/{name}",
                       "-s", "/usr/sbin/nologin", "-G", groups, name]),
-         lambda: run(["userdel", name])),
-        (lambda: run(["passwd", "-l", name]), None),
+         lambda: run(["userdel", name]), False),
+        (lambda: run(["passwd", "-l", name]), None, False),
         (lambda: run_slurm(cfg, ["sacctmgr", "-i", "add", "user", name,
                                  f"account={cfg.slurm_account}", f"qos={cfg.slurm_qos}"]),
-         lambda: run_slurm(cfg, ["sacctmgr", "-i", "delete", "user", name])),
-        (lambda: host.create_account(name, uid), lambda: host.delete_account(name)),
+         lambda: run_slurm(cfg, ["sacctmgr", "-i", "delete", "user", name]), False),
+        # delete-account is safe on a missing account.
+        (lambda: host.create_account(name, uid), lambda: host.delete_account(name), True),
     ]
     if not link_existing:
-        steps.append((lambda: host.create_folders(name, uid), None))
+        steps.append((lambda: host.create_folders(name, uid), None, False))
     done: list[Callable[[], Any]] = []
-    for action, undo in steps:
+    for action, undo, undo_on_failure in steps:
         try:
             action()
         except AgentError as e:
+            if undo is not None and undo_on_failure:
+                done.append(undo)
             for u in reversed(done):
                 try:
                     u()

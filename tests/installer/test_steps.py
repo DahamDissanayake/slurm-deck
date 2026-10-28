@@ -286,6 +286,12 @@ def test_preflight_needs_python3_venv(ctx):
         steps.preflight(ctx)
 
 
+def test_preflight_names_the_compose_plugin_when_docker_compose_is_missing(ctx):
+    ctx.login.codes = {"docker compose version": 1}
+    with pytest.raises(steps.InstallError, match="Compose v2 plugin.*docker-compose-v2"):
+        steps.preflight(ctx)
+
+
 def test_agent_rebuilds_a_venv_that_has_no_pip(ctx):
     steps.agent(ctx)
     venv = "/opt/slurm-deck-web/agent-venv"

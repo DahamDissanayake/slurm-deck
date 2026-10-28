@@ -121,7 +121,8 @@ class Helper:
         if self.dry_run:
             print("+ " + " ".join(shlex.quote(c) for c in cmd), file=sys.stderr)
             return
-        code = subprocess.run(cmd).returncode
+        # stdout carries only the one JSON reply; passwd and friends print there too.
+        code = subprocess.run(cmd, stdout=sys.stderr).returncode
         if code not in ok_codes:
             raise subprocess.CalledProcessError(code, cmd)
 

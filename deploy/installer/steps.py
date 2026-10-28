@@ -162,7 +162,8 @@ def preflight(ctx: Ctx) -> None:
         ("swap is present", "[ \"$(awk '/SwapTotal/{print $2}' /proc/meminfo)\" -gt 0 ]", True),
         ("sinfo works", "sinfo -h >/dev/null", False),
         ("munge works", "munge -n | unmunge >/dev/null", False),
-        ("Docker with Compose v2", "docker compose version >/dev/null", False),
+        ("Docker with Compose v2 (install the Compose v2 plugin; on Ubuntu: docker-compose-v2)",
+         "docker compose version >/dev/null", False),
         ("nftables (nft)", "command -v nft >/dev/null", False),
         ("Python 3.11 or newer", "python3 -c 'import sys; sys.exit(sys.version_info < (3, 11))'", False),
         # Ubuntu ships these in python3-venv; without it `python3 -m venv` stops half-way.
