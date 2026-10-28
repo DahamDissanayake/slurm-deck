@@ -199,7 +199,8 @@ def test_iptables_check_lists_the_rules_in_place_and_remove_deletes_them_all(tmp
     assert r.returncode == 0, r.stderr
     for rule in WEB.values():
         assert rule in r.stdout
-    changes = [c for c in _calls(tmp_path).splitlines() if not c.endswith(" -S")]
+    changes = [c for c in _calls(tmp_path).splitlines()
+               if c.startswith("iptables") and not c.endswith(" -S")]
     assert changes == []   # --check changes nothing
     assert (tmp_path / "rules.v4").read_text() == _rules_v4(web=True)
     (tmp_path / "calls.log").unlink()
