@@ -9,6 +9,8 @@ from typing import Any
 from deckagent.identity import PosixIdentity
 
 SAFE_PATH = "/usr/local/bin:/usr/bin:/bin"
+# deck-agent itself runs with UMask=0077; files made as the user get the usual modes.
+USER_UMASK = 0o022
 
 
 def _env(ident: PosixIdentity, env: dict[str, str] | None) -> dict[str, str]:
@@ -20,7 +22,7 @@ def run_as(ident: PosixIdentity, argv: list[str], *, input: bytes | None = None,
            env: dict[str, str] | None = None) -> subprocess.CompletedProcess[bytes]:
     return subprocess.run(
         argv, user=ident.uid, group=ident.gid, extra_groups=list(ident.groups),
-        env=_env(ident, env), cwd=cwd, timeout=timeout, capture_output=True,
+        env=_env(ident, env), cwd=cwd, umask=USER_UMASK, timeout=timeout, capture_output=True,
         input=input, stdin=None if input is not None else subprocess.DEVNULL, close_fds=True)
 
 
@@ -30,4 +32,4 @@ def popen_as(ident: PosixIdentity, argv: list[str], *, cwd: str | None = None,
     kw.setdefault("stdin", subprocess.DEVNULL)
     return subprocess.Popen(argv, user=ident.uid, group=ident.gid,
                             extra_groups=list(ident.groups), env=_env(ident, env), cwd=cwd,
-                            close_fds=True, **kw)
+                            umask=USER_UMASK, close_fds=True, **kw)
