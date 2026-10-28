@@ -101,7 +101,7 @@ scenario 2; scenario 12 run only while the queue was empty.
 | # | Result |
 |---|---|
 | 2, 3, 9, 10, 11, 12, 14 | PASS |
-| 1, 4, 5, 6, 7 | BLOCKED by a product bug: no job of a web account can start (below) |
+| 1, 4, 5, 6, 7 | BLOCKED by a product bug: no job of a web account can start (below); re-run once the SLURM-86 fix is deployed |
 
 Known product bugs found or confirmed by this run:
 
@@ -111,6 +111,7 @@ Known product bugs found or confirmed by this run:
   this fails: slurmd logs `error: Failed to get current user environment
   variables` and the job is held with `user_env_retrieval_failed_requeued_held`
   (`su - <web user> -c env` answers "This account is currently not available").
+  Fixed in SLURM-86 (`--export=NIL`); not deployed on the live install yet.
 - **`--mail-user` scripts are refused at submit.** `job.submit` in deck-agent calls
   `validate_sbatch` without `registered_email`. The scenario jobs submit with
   mail off to avoid it.
