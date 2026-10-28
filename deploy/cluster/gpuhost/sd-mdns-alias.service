@@ -1,0 +1,14 @@
+[Unit]
+Description=Announce the Slurm Deck name over mDNS
+After=avahi-daemon.service network-online.target
+Requires=avahi-daemon.service
+
+[Service]
+# PUBLIC_HOSTNAME and LAN_ADDR are written by the installer.
+EnvironmentFile=/etc/slurm-deck-web/gpu-helper.env
+ExecStart=/usr/bin/avahi-publish -a -R ${PUBLIC_HOSTNAME} ${LAN_ADDR}
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

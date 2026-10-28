@@ -1,0 +1,67 @@
+# Caddy in front of the web app. The certificate comes from Caddy's own CA
+# (tls internal); browsers trust it once the user installs /ca.crt, which is
+# served over plain HTTP too so it can be fetched before it is trusted.
+
+{
+	# The container can't (and shouldn't) touch a system trust store.
+	skip_install_trust
+}
+
+(ca_cert) {
+	root * /data/caddy/pki/authorities/local
+	rewrite * /root.crt
+	header Content-Type application/x-x509-ca-cert
+	header Content-Disposition "attachment; filename=\"slurm-deck-ca.crt\""
+	file_server
+}
+
+http://{$SD_PUBLIC_HOSTNAME} {
+	handle /ca.crt {
+		import ca_cert
+	}
+	handle {
+		redir https://{host}{uri} permanent
+	}
+}
+
+{$SD_PUBLIC_HOSTNAME} {
+	tls internal
+
+	handle /ca.crt {
+		import ca_cert
+	}
+
+	# Uploads come in 64 MB chunks; allow some headroom.
+	@uploads path /api/uploads/*
+	request_body @uploads {
+		max_size 128MB
+	}
+
+	# Long-lived streams: pass bytes straight through. Caddy sets no read or
+	# write timeouts on proxied connections, so sessions stay open.
+	@streams path /api/uploads/* /notebook/* /tensorboard/* /terminal/* /ws/*
+	handle @streams {
+		reverse_proxy web:8000 {
+			flush_interval -1
+		}
+	}
+
+	handle {
+		reverse_proxy web:8000
+	}
+}
+
+# Notebooks, TensorBoard and terminals live on their own name, so a job's pages
+# never share an origin with the app (SLURM-56). The web app answers only
+# /notebook, /tensorboard, /terminal and /_sd here; everything else is a 404.
+http://{$SD_SESSION_HOSTNAME} {
+	redir https://{host}{uri} permanent
+}
+
+{$SD_SESSION_HOSTNAME} {
+	tls internal
+
+	reverse_proxy web:8000 {
+		flush_interval -1
+	}
+}

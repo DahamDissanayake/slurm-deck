@@ -1,0 +1,28 @@
+# deploy/cluster/envs/data-science.yml
+# description: Data science (scikit-learn, xgboost, pandas, JupyterLab)
+# Prebuilt conda environment, CUDA 12.8 / PyTorch 2.7 wheels (cu128).
+# Fast-moving libraries carry an upper bound: unbounded pins broke jobs before.
+# Built by the environments admin page into $NFS_ROOT/envs/data-science.
+name: data-science
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+    - --extra-index-url https://download.pytorch.org/whl/cu128
+    - torch==2.7.*
+    - scikit-learn>=1.4
+    - xgboost>=2.0
+    - lightgbm
+    - pandas>=2.0
+    - numpy
+    - matplotlib
+    - seaborn
+    - tensorboard
+    - protobuf
+    - tqdm
+    - jupyterlab>=4.0
+    - ipywidgets
+    - plotly

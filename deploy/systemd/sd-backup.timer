@@ -1,0 +1,10 @@
+[Unit]
+Description=Slurm Deck nightly backup
+
+[Timer]
+# The installer replaces @CLUSTER_TZ@ with the cluster's timezone.
+OnCalendar=*-*-* 02:30:00 @CLUSTER_TZ@
+Persistent=true
+
+[Install]
+WantedBy=timers.target

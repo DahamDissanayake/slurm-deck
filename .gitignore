@@ -1,76 +1,39 @@
-# Python
+# Python caches
 __pycache__/
 *.py[cod]
-*.pyo
-*.pyd
-.Python
 *.egg-info/
-dist/
 build/
-.eggs/
-*.whl
-pip-wheel-metadata/
+dist/
+.mypy_cache/
+.ruff_cache/
 
 # Virtual environments
 .venv/
 venv/
-env/
-ENV/
+
+# Frontend
+node_modules/
+frontend/dist/
 
 # Testing
 .pytest_cache/
 .coverage
-coverage.xml
-htmlcov/
-.tox/
 
-# Type checking
-.mypy_cache/
-.dmypy.json
-.pytype/
+# Site config and secrets — never commit; use the .example files
+*.env
+.env.*
+!*.env.example
+site.env
+secrets.env
 
-# IDE
+# Editors, OS, agent tooling
 .vscode/
 .idea/
-*.iml
-*.suo
-*.user
-
-# OS
 .DS_Store
 Thumbs.db
-desktop.ini
-
-# Secrets / credentials
-*.env
-.env
-.env.*
-*credentials*.json
-service_account*.json
-google_credentials*.json
-
-# Claude Code project artifacts
 .claude/
-docs/superpowers/
 .superpowers
+docs/superpowers/
 
-# Audit state (runtime, not source)
-*.db
-*.db-wal
-*.db-shm
-*.jsonl
-
-# SLURM job output (generated at runtime)
-slurm-*.out
-slurm-*.err
-
-# Site-specific config (Phase 0) — never commit; use site.env.example as template
-deploy/site.env
-
-# Apptainer / build scratch
-*.sif
-.apptainer_tmp/
-.apptainer_cache/
-
-# Secrets (API keys) — daemon-only, never commit
-deploy/secrets.env
+# The frontend pins exact versions in package.json; no lockfile (PR size limit)
+frontend/package-lock.json

@@ -1,0 +1,295 @@
+#!/usr/bin/env python3
+"""sd-gpu-helper: the root-on-disk steps deck-agent can't do from the login node.
+
+Installed as /usr/local/sbin/sd-gpu-helper on the GPU host (the NFS server,
+where root is real; the login node's root is squashed). deck-agent reaches it
+as `sdprov` over SSH with a forced command and sudo for this one script, so the
+request arrives in SSH_ORIGINAL_COMMAND. It accepts exactly:
+
+    create-account <user> <uid>   create-folders <user> <uid>   folder-info <user>
+    archive <user>                purge <user>                  delete-account <user>
+    ping
+
+The command is split on whitespace, never by a shell. Anything else, a bad
+username or UID, or a path that resolves somewhere unexpected is refused
+before anything runs. One JSON object goes to stdout; exit 0 success,
+2 refused, 1 failed.
+
+Standard library only, so it runs on the host's system python as is.
+"""
+
+import argparse
+import grp
+import json
+import os
+import pwd
+import re
+import shlex
+import subprocess
+import sys
+from datetime import datetime, timezone
+
+# Copy of sdcore.names (kept in sync by tests/gpuhost/test_helper.py).
+USERNAME_RE = re.compile(r"^[a-z_][a-z0-9_-]{0,31}$")
+RESERVED = frozenset({
+    "root", "daemon", "bin", "sys", "nobody",
+    "slurm", "slurmadmin", "munge", "mysql", "postgres", "sshd",
+    "sdweb", "sdworker", "sd-ops", "sdprov",
+    "public", "shared", "admin",
+    "gpuusers", "gpuadmins", "webusers", "docker", "sudo",
+})
+UID_MIN, UID_MAX = 1000, 60000
+CONFIG_FILE = "/etc/slurm-deck-web/gpu-helper.env"
+DEFAULTS = {"NFS_ROOT": "/shared", "WEBUSERS_GROUP": "webusers",
+            "GPUUSERS_GROUP": "gpuusers", "ADMIN_GROUP": "gpuadmins"}
+ARITY = {"create-account": 2, "create-folders": 2, "folder-info": 1, "archive": 1,
+         "purge": 1, "delete-account": 1, "ping": 0, "service-status": 0}
+SERVICE_UNITS = ("slurmd", "munge", "sd-stats-writer")   # the only units it will report on
+
+
+class Refused(Exception):
+    pass
+
+
+PRIVILEGED_GROUPS = frozenset({"sudo", "wheel", "admin"})
+
+
+class Accounts:
+    """The host's accounts, from pwd and grp. Tests pass --fake-accounts, a JSON
+    file of {name: {"uid": n, "groups": [...]}}, instead. Like --root it is an
+    argument, and sudoers lets sdprov run the helper with none."""
+
+    def __init__(self, fake_path=None) -> None:
+        self.fake = None
+        if fake_path:
+            with open(fake_path) as f:
+                self.fake = json.load(f)
+
+    def lookup(self, name: str):
+        """(uid, names of every group it is in), or None when there's no such account."""
+        if self.fake is not None:
+            found = self.fake.get(name)
+            return (int(found["uid"]), frozenset(found.get("groups", []))) if found else None
+        try:
+            entry = pwd.getpwnam(name)
+        except KeyError:
+            return None
+        groups = {g.gr_name for g in grp.getgrall()
+                  if name in g.gr_mem or g.gr_gid == entry.pw_gid}
+        return entry.pw_uid, frozenset(groups)
+
+    def owner_of(self, uid: int):
+        """The account with this UID, or None."""
+        if self.fake is not None:
+            return next((n for n, a in self.fake.items() if int(a["uid"]) == uid), None)
+        try:
+            return pwd.getpwuid(uid).pw_name
+        except KeyError:
+            return None
+
+
+class Helper:
+    def __init__(self, cfg: dict, dry_run: bool, accounts: Accounts) -> None:
+        self.root = os.path.realpath(cfg["NFS_ROOT"])
+        self.cfg = cfg
+        self.dry_run = dry_run
+        self.accounts = accounts
+
+    def web_account(self, user: str):
+        """The UID of user's account if it is a web account (in WEBUSERS_GROUP and
+        no privileged group); None when there is no such account. Every other
+        account is refused: the helper never changes a sysadmin's, a shell
+        user's or a system account (SLURM-59)."""
+        found = self.accounts.lookup(user)
+        if found is None:
+            return None
+        uid, groups = found
+        if (uid < UID_MIN or self.cfg["WEBUSERS_GROUP"] not in groups
+                or groups & (PRIVILEGED_GROUPS | {self.cfg["ADMIN_GROUP"]})):
+            raise Refused(f"{user} isn't a web account")
+        return uid
+
+    def unowned(self, paths: list) -> None:
+        """With the account already gone, its folders may only be removed when
+        their owner UID belongs to nobody else."""
+        for path in paths:
+            other = self.accounts.owner_of(os.lstat(path).st_uid)
+            if other is not None:
+                raise Refused(f"{path} belongs to {other}")
+
+    def run(self, *cmd: str, ok_codes: tuple = (0,)) -> None:
+        if self.dry_run:
+            print("+ " + " ".join(shlex.quote(c) for c in cmd), file=sys.stderr)
+            return
+        code = subprocess.run(cmd).returncode
+        if code not in ok_codes:
+            raise subprocess.CalledProcessError(code, cmd)
+
+    def area(self, sub: str, user: str) -> str:
+        """root/<sub>/<user>, refused if it is a symlink or resolves anywhere else."""
+        path = os.path.join(self.root, sub, user)
+        if os.path.islink(path):
+            raise Refused(f"{sub}/{user} is a symlink")
+        real = os.path.realpath(path)
+        if os.path.dirname(real) != os.path.join(self.root, sub) or os.path.basename(real) != user:
+            raise Refused(f"{sub}/{user} resolves outside {sub}/")
+        return path
+
+    def create_account(self, user: str, uid: int) -> dict:
+        existing = self.web_account(user)   # a rerun may find its own web account
+        if existing is not None and existing != uid:
+            raise Refused(f"{user} already exists with another UID")
+        if existing is None:
+            self.run("groupadd", "-g", str(uid), user)
+            self.run("useradd", "-u", str(uid), "-g", str(uid), "-m", "-d", f"/home/{user}",
+                     "-s", "/usr/sbin/nologin", "-G",
+                     f"{self.cfg['WEBUSERS_GROUP']},{self.cfg['GPUUSERS_GROUP']}", user)
+        self.run("passwd", "-l", user)
+        # useradd -m won't re-own a home left behind by an earlier UID.
+        self.run("chown", "-R", f"{uid}:{uid}", f"/home/{user}")
+        return {}
+
+    def create_folders(self, user: str, uid: int) -> dict:
+        self.web_account(user)
+        admin = self.cfg["ADMIN_GROUP"]
+        for sub in ("users", "jobs"):
+            path = self.area(sub, user)
+            self.run("mkdir", "-p", path)
+            self.run("chown", f"{uid}:{admin}", path)
+            self.run("chmod", "2770", path)
+            self.run("setfacl", "-R", "-m", f"g:{admin}:rwX", "-m", f"d:g:{admin}:rwx", path)
+        return {}
+
+    def folder_info(self, user: str) -> dict:
+        path = os.path.join(self.root, "users", user)
+        if not os.path.lexists(path):
+            return {"exists": False}
+        path = self.area("users", user)
+        st = os.stat(path)
+        du = subprocess.run(["du", "-sb", path], capture_output=True, text=True, check=True)
+        mtime = datetime.fromtimestamp(st.st_mtime, timezone.utc).isoformat()
+        return {"exists": True, "owner_uid": st.st_uid, "bytes": int(du.stdout.split()[0]),
+                "mtime": mtime}
+
+    def archive(self, user: str) -> dict:
+        src = os.path.join(self.root, "users", user)
+        if not os.path.lexists(src):
+            return {"archived": False}
+        src = self.area("users", user)
+        if self.web_account(user) is None:
+            self.unowned([src])
+        dst = src + ".offboarded"
+        if os.path.lexists(dst):
+            # Never delete an earlier archive: move it aside under a timestamp.
+            stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+            aside, n = f"{dst}.{stamp}", 1
+            while os.path.lexists(aside):
+                aside, n = f"{dst}.{stamp}-{n}", n + 1
+            os.rename(dst, aside)
+        os.rename(src, dst)
+        return {"archived": True}
+
+    def purge(self, user: str) -> dict:
+        # Check both before removing either.
+        paths = [self.area(sub, user) for sub in ("users", "jobs")
+                 if os.path.lexists(os.path.join(self.root, sub, user))]
+        if self.web_account(user) is None:
+            self.unowned(paths)
+        for path in paths:
+            self.run("rm", "-rf", "--one-file-system", path)
+        return {"removed": len(paths)}
+
+    def delete_account(self, user: str) -> dict:
+        self.web_account(user)   # system, sysadmin and shell accounts are refused
+        self.run("pkill", "-KILL", "-u", user, ok_codes=(0, 1))   # 1: no processes
+        self.run("userdel", user, ok_codes=(0, 6))                 # 6: no such user
+        self.run("groupdel", user, ok_codes=(0, 6))
+        if not self.dry_run:
+            try:
+                pwd.getpwnam(user)
+            except KeyError:
+                return {}
+            raise RuntimeError(f"{user} still exists after userdel (busy processes?)")
+        return {}
+
+
+def parse(words: list, accounts: Accounts) -> tuple:
+    """(op, user, uid) for a valid command; Refused otherwise."""
+    if not words or words[0] not in ARITY or len(words) - 1 != ARITY[words[0]]:
+        raise Refused("unknown command")
+    op, args = words[0], words[1:]
+    user = args[0] if args else None
+    if user is not None and (not USERNAME_RE.fullmatch(user) or user in RESERVED):
+        raise Refused("invalid username")
+    uid = None
+    if len(args) == 2:
+        if not args[1].isdigit() or not UID_MIN <= int(args[1]) <= UID_MAX:
+            raise Refused("invalid uid")
+        uid = int(args[1])
+        owner = accounts.owner_of(uid)
+        if owner is not None and owner != user:
+            raise Refused("uid belongs to another account")
+    return op, user, uid
+
+
+def load_config(path: str) -> dict:
+    cfg = dict(DEFAULTS)
+    try:
+        with open(path) as f:
+            for line in f:
+                key, sep, value = line.strip().partition("=")
+                if sep and key in cfg:
+                    cfg[key] = value.strip().strip('"').strip("'")
+    except OSError:
+        pass
+    return cfg
+
+
+def service_status() -> dict:
+    """systemctl is-active for each allowed unit: active, inactive, failed or unknown."""
+    out = {}
+    for unit in SERVICE_UNITS:
+        try:
+            r = subprocess.run(["systemctl", "is-active", unit], capture_output=True, text=True)
+            out[unit] = r.stdout.strip() or "unknown"
+        except OSError:
+            out[unit] = "unknown"
+    return out
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(add_help=False)
+    ap.add_argument("--root")
+    ap.add_argument("--config", default=CONFIG_FILE)
+    ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--fake-accounts")
+    opts, words = ap.parse_known_args()
+    if not words:
+        words = os.environ.get("SSH_ORIGINAL_COMMAND", "").split()
+    cfg = load_config(opts.config)
+    if opts.root:
+        cfg["NFS_ROOT"] = opts.root
+    try:
+        accounts = Accounts(opts.fake_accounts)
+        op, user, uid = parse(words, accounts)
+        helper = Helper(cfg, opts.dry_run, accounts)
+        if op == "ping":
+            result = {"pong": True}
+        elif op == "service-status":
+            result = {"units": service_status()}
+        elif uid is not None:
+            result = getattr(helper, op.replace("-", "_"))(user, uid)
+        else:
+            result = getattr(helper, op.replace("-", "_"))(user)
+    except Refused as e:
+        print(json.dumps({"ok": False, "error": str(e)}))
+        return 2
+    except (OSError, subprocess.CalledProcessError, RuntimeError, ValueError) as e:
+        print(json.dumps({"ok": False, "error": str(e)}))
+        return 1
+    print(json.dumps({"ok": True, **result}))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

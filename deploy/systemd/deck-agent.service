@@ -1,0 +1,49 @@
+[Unit]
+Description=Slurm Deck deck-agent (privileged broker for the web app)
+After=network-online.target remote-fs.target slurmctld.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Root, because it creates accounts and drops to each user for their work.
+User=root
+EnvironmentFile=/etc/slurm-deck-web/agent.env
+ExecStart=/opt/slurm-deck-web/agent-venv/bin/python -m deckagent
+RuntimeDirectory=slurm-deck-web
+RuntimeDirectoryPreserve=yes
+LogsDirectory=slurm-deck-web
+Restart=always
+RestartSec=2
+
+# Only what it uses: dropping to users (setuid, setgid), account and file work
+# as root (chown, dac_override, dac_read_search, fowner), pkill on account
+# delete (kill) and the PAM audit record runuser writes for pods resize
+# (audit_write).
+CapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_CHOWN CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_FOWNER CAP_KILL CAP_AUDIT_WRITE
+# Dropping to a user needs no new privileges.
+NoNewPrivileges=yes
+
+# Everything read-only but these. /etc: useradd, groupadd and resize-pods.sh
+# (/etc/slurm). /shared: the default NFS root; the installer adds the site's
+# SD_NFS_ROOT in deck-agent.service.d/nfs-root.conf. lastlog, faillog and the
+# mail spool: useradd. The socket and audit log directories come from
+# RuntimeDirectory and LogsDirectory. "-" skips a path the host doesn't have.
+ProtectSystem=strict
+ReadWritePaths=/etc -/shared -/var/log/lastlog -/var/log/faillog -/var/mail
+ProtectHome=read-only
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+# No RestrictSUIDSGID: user folders are setgid (2770), and under it cp, tar and
+# Python's copytree fail there (mkdir with the setgid bit is refused, openat2
+# returns ENOSYS), which breaks file and env work run as the user. Publish strips
+# setuid and setgid itself (deckagent.verbs.admin).
+# deck-agent's own files; user work keeps umask 022 (deckagent.runas).
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

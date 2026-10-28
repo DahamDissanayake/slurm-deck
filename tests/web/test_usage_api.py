@@ -1,0 +1,38 @@
+"""/api/usage and the admin reports pass the caller's session to deck-agent."""
+
+import pytest
+from accounts_helpers import _account, _client
+
+pytestmark = pytest.mark.pg
+
+
+class UsageAgent:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, dict, str]] = []
+
+    def call(self, verb, payload=None, *, session=None):
+        self.calls.append((verb, payload, session))
+        return {"gpu_hours": 1.5, "users": [], "total_bytes": 0}
+
+
+@pytest.fixture
+def usage(env):
+    app, _, _ = env
+    app.state.agent = UsageAgent()
+    _account(app, "amasha")
+    _account(app, "dinuka", role="admin")
+    return app.state.agent, _client(app, "amasha"), _client(app, "dinuka")
+
+
+def test_personal_usage_goes_to_the_agent_with_the_session(usage):
+    agent, user, _ = usage
+    assert user.get("/api/usage?days=7").json()["gpu_hours"] == 1.5
+    assert agent.calls == [("usage.personal", {"days": 7}, user.cookies["sd_session"])]
+
+
+def test_cluster_usage_and_disk_usage_are_admin_only(usage):
+    agent, user, admin = usage
+    for path in ("/api/admin/usage?days=30", "/api/admin/disk-usage"):
+        assert user.get(path).status_code == 403
+        assert admin.get(path).status_code == 200
+    assert [c[0] for c in agent.calls] == ["usage.cluster", "admin.disk_usage"]

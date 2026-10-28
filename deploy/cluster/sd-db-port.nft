@@ -1,0 +1,22 @@
+# On the login node: only root (deck-agent) may open a TCP connection to Postgres.
+# compose.yaml publishes the database on 127.0.0.1 for deck-agent, and the host can
+# also reach the db container's own address on its Docker bridge; shell users get a
+# reset on both. Traffic between containers never passes this hook.
+#
+# The hook runs before Docker's DNAT (dstnat, -100), so it sees the address the
+# client asked for. Loaded at boot by sd-db-firewall.service; loading it again
+# replaces the table.
+define DB_PORT = 5432
+
+table inet sd_db
+delete table inet sd_db
+
+table inet sd_db {
+    chain output {
+        type filter hook output priority -150; policy accept;
+        tcp dport $DB_PORT meta skuid 0 accept
+        tcp dport $DB_PORT oifname "lo" reject with tcp reset
+        tcp dport $DB_PORT oifname "docker0" reject with tcp reset
+        tcp dport $DB_PORT oifname "br-*" reject with tcp reset
+    }
+}

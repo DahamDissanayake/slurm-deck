@@ -1,0 +1,111 @@
+# The web stack: Postgres, the one-off migration, the web app, the worker and
+# Caddy. Run from deploy/:
+#
+#   docker compose build && docker compose up -d
+#   docker compose run --rm web python -m sdweb.cli create-admin \
+#       --email E --full-name N --username U
+#
+# SD_WEB_UID/GID, SD_WORKER_UID/GID (the sdweb and sdworker host accounts that
+# deck-agent admits) and SD_PUBLIC_HOSTNAME come from the shell or deploy/.env.
+# Site settings and secrets come from /etc/slurm-deck-web/{web,secrets}.env.
+#
+# No service mounts /shared, munge, /etc/shadow or the Docker socket: all
+# privileged work goes through deck-agent's socket.
+
+x-app: &app
+  image: slurm-deck-web:local
+  build:
+    context: ..
+    dockerfile: deploy/web.Dockerfile
+    args:
+      SD_WEB_UID: ${SD_WEB_UID:?set SD_WEB_UID}
+      SD_WEB_GID: ${SD_WEB_GID:?set SD_WEB_GID}
+  env_file:
+    - /etc/slurm-deck-web/web.env
+    - /etc/slurm-deck-web/secrets.env
+  read_only: true
+  tmpfs:
+    - /tmp
+  cap_drop: [ALL]
+  security_opt:
+    - no-new-privileges:true
+  restart: unless-stopped
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: sdweb
+      POSTGRES_DB: slurmdeck
+    env_file:
+      - /etc/slurm-deck-web/secrets.env
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # Loopback only: deck-agent on the host reads the session views here. The
+    # installer's sd-db-firewall (cluster/sd-db-port.nft) lets only root connect.
+    ports:
+      - "127.0.0.1:${SD_DB_HOST_PORT:-5432}:5432"
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "sdweb", "-d", "slurmdeck"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  migrate:
+    <<: *app
+    user: "${SD_WEB_UID}:${SD_WEB_GID}"
+    command: ["python", "-m", "sdweb.cli", "migrate"]
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    <<: *app
+    user: "${SD_WEB_UID}:${SD_WEB_GID}"
+    # Port 8000 stays on the Compose network; only Caddy reaches it.
+    expose:
+      - "8000"
+    volumes:
+      - /run/slurm-deck-web:/run/slurm-deck-web:ro
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    <<: *app
+    user: "${SD_WORKER_UID:?set SD_WORKER_UID}:${SD_WORKER_GID:?set SD_WORKER_GID}"
+    command: ["python", "-m", "sdweb.worker"]
+    volumes:
+      - /run/slurm-deck-web:/run/slurm-deck-web:ro
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  caddy:
+    image: caddy:2
+    environment:
+      SD_PUBLIC_HOSTNAME: ${SD_PUBLIC_HOSTNAME:?set SD_PUBLIC_HOSTNAME}
+      SD_SESSION_HOSTNAME: ${SD_SESSION_HOSTNAME:?set SD_SESSION_HOSTNAME}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - web
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:
