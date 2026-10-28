@@ -40,7 +40,8 @@ def _setup(tmp_path, *, nft="", ipt="", ipt_filter="", hook=None):
     fakes = {"nft": f'case "$*" in *"list ruleset"*) cat "$T/nft.out";; esac; {drain}',
              "iptables": 'case "$*" in *"-t filter -S"*) cat "$T/ipt-filter.out";; '
                          '*" -S"*) cat "$T/ipt.out";; *" -C "*) exit 1;; esac',
-             "iptables-restore": 'cat > "$T/restored"; exit "$(cat "$T/restore.code" 2>/dev/null || echo 0)"'}
+             "iptables-restore": 'cat > "$T/restored"; '
+                                 'exit "$(cat "$T/restore.code" 2>/dev/null || echo 0)"'}
     for name, body in fakes.items():
         f = bindir / name
         f.write_text(f'#!/bin/bash\necho "{name} $*" >> "{log}"\n{body}\n')
@@ -119,8 +120,8 @@ WEB = {
             "-j ACCEPT",
     "pre": "-A PREROUTING -p tcp -m multiport --dports 80,443 -m comment --comment sd-web-forward "
            "-j DNAT --to-destination 192.168.122.20",
-    "out": "-A OUTPUT -o lo -p tcp -m multiport --dports 80,443 -m comment --comment sd-web-forward "
-           "-j DNAT --to-destination 192.168.122.20",
+    "out": "-A OUTPUT -o lo -p tcp -m multiport --dports 80,443 "
+           "-m comment --comment sd-web-forward -j DNAT --to-destination 192.168.122.20",
 }
 
 
