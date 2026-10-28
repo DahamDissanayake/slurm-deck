@@ -37,8 +37,8 @@ BAD_SOURCE = 18   # ... for "the source is a link, or leaves the user's folder"
 # from the resolved path and checked again afterwards, so a link swapped in
 # while copying is caught. Copies beside the target first, so a failed copy
 # never leaves a half-replaced asset. The copy goes through tar with setuid and
-# setgid stripped: a published file must not run as sd-ops, and deck-agent's
-# RestrictSUIDSGID refuses any mkdir or chmod that would keep those bits.
+# setgid stripped: cp -a would keep them, and a published file owned by sd-ops
+# must not run as sd-ops.
 PUBLISH = ('set -eo pipefail; root=$(realpath -e -- "$4") || exit 18; '
            'real=$(realpath -e -- "$1") || exit 18; '
            'case "$1" in "$4"/?*) ;; *) exit 18;; esac; '

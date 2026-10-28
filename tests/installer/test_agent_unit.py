@@ -31,8 +31,10 @@ def test_the_unit_is_sandboxed():
     s = _service()
     for key in ("NoNewPrivileges", "ProtectKernelTunables", "ProtectKernelModules",
                 "ProtectKernelLogs", "ProtectControlGroups", "RestrictNamespaces",
-                "LockPersonality", "RestrictSUIDSGID", "PrivateTmp"):
+                "LockPersonality", "PrivateTmp"):
         assert s[key] == "yes", key
+    # Left out on purpose: it breaks copies inside setgid user folders (see the unit).
+    assert "RestrictSUIDSGID" not in s
     assert s["ProtectSystem"] == "strict"
     assert s["ProtectHome"] == "read-only"
     assert s["UMask"] == "0077"

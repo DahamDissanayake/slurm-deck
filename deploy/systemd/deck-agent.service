@@ -38,7 +38,10 @@ ProtectKernelLogs=yes
 ProtectControlGroups=yes
 RestrictNamespaces=yes
 LockPersonality=yes
-RestrictSUIDSGID=yes
+# No RestrictSUIDSGID: user folders are setgid (2770), and under it cp, tar and
+# Python's copytree fail there (mkdir with the setgid bit is refused, openat2
+# returns ENOSYS), which breaks file and env work run as the user. Publish strips
+# setuid and setgid itself (deckagent.verbs.admin).
 # deck-agent's own files; user work keeps umask 022 (deckagent.runas).
 UMask=0077
 

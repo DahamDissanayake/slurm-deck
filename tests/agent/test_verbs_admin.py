@@ -132,8 +132,8 @@ def test_publish_refuses_an_existing_name_unless_replace_is_chosen(admin):
 
 
 def test_publish_copies_without_setuid_or_setgid_bits(admin):
-    # deck-agent runs with RestrictSUIDSGID=yes, so a copy that kept the setgid
-    # bit of a user's folder (2770) would be refused; modes go through the umask.
+    # The copy is owned by sd-ops, so a setuid bit kept from the user's file would
+    # let anyone run it as sd-ops; modes go through the umask.
     src = admin.dir / "shared/users/amasha/env"
     (src / "bin").mkdir(parents=True)
     (admin.dir / "shared/envs").mkdir()
