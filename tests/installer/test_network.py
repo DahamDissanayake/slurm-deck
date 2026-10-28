@@ -101,27 +101,15 @@ def test_check_detects_an_iptables_forward(tmp_path):
 # The live GPU host (SLURM-50): libvirt's LIBVIRT_FWI rejects new connections into virbr0,
 # so the 2225 forward also has FORWARD accept rules, an OUTPUT -o lo DNAT, and is saved in
 # /etc/iptables/rules.v4.
-LIVE_NAT = ("-P PREROUTING ACCEPT
--P OUTPUT ACCEPT
-"
-            "-A PREROUTING -p tcp -m tcp --dport 2225 -j DNAT --to-destination 192.168.122.10:22
-"
-            "-A OUTPUT -o lo -p tcp -m tcp --dport 2225 -j DNAT --to-destination 192.168.122.10:22
-"
-            "-A POSTROUTING -s 192.168.122.0/24 -j LIBVIRT_PRT
-")
-LIVE_FILTER = ("-P FORWARD ACCEPT
-"
-               "-A FORWARD -d 192.168.122.10/32 -o virbr0 -p tcp -m tcp --dport 22 "
-               "-m conntrack --ctstate NEW,RELATED,ESTABLISHED -j ACCEPT
-"
-               "-A FORWARD -s 192.168.122.10/32 -i virbr0 -p tcp -m tcp --sport 22 "
-               "-m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
-"
-               "-A FORWARD -j LIBVIRT_FWX
--A FORWARD -j LIBVIRT_FWI
--A FORWARD -j LIBVIRT_FWO
-")
+SSH_PRE = "-A PREROUTING -p tcp -m tcp --dport 2225 -j DNAT --to-destination 192.168.122.10:22"
+SSH_OUT = "-A OUTPUT -o lo -p tcp -m tcp --dport 2225 -j DNAT --to-destination 192.168.122.10:22"
+SSH_FWD = ("-A FORWARD -d 192.168.122.10/32 -o virbr0 -p tcp -m tcp --dport 22 "
+           "-m conntrack --ctstate NEW,RELATED,ESTABLISHED -j ACCEPT")
+SSH_BACK = ("-A FORWARD -s 192.168.122.10/32 -i virbr0 -p tcp -m tcp --sport 22 "
+            "-m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT")
+LIBVIRT_JUMPS = ["-A FORWARD -j LIBVIRT_FWX", "-A FORWARD -j LIBVIRT_FWI",
+                 "-A FORWARD -j LIBVIRT_FWO"]
+POSTROUTING = "-A POSTROUTING -s 192.168.122.0/24 -j LIBVIRT_PRT"
 WEB = {
     "fwd": "-A FORWARD -d 192.168.122.20/32 -o virbr0 -p tcp -m multiport --dports 80,443 "
            "-m conntrack --ctstate NEW,RELATED,ESTABLISHED -m comment --comment sd-web-forward "
@@ -136,30 +124,36 @@ WEB = {
 }
 
 
-def _rules_v4(nat_extra="", filter_extra=""):
-    nat = [line for line in LIVE_NAT.splitlines() if line.startswith("-A")]
-    flt = [line for line in LIVE_FILTER.splitlines() if line.startswith("-A")]
-    return ("*nat
-:PREROUTING ACCEPT [0:0]
-:OUTPUT ACCEPT [0:0]
-" + nat[0] + "
-" + nat_extra
-            + "
-".join(nat[1:]) + "
-COMMIT
-*filter
-:FORWARD ACCEPT [0:0]
-"
-            + "
-".join(flt[:2]) + "
-" + filter_extra + "
-".join(flt[2:]) + "
-COMMIT
-")
+def _lines(*rules):
+    return "".join(f"{r}\n" for r in rules)
+
+
+def _live_nat(*, output=True, web=False):
+    rules = ["-P PREROUTING ACCEPT", "-P OUTPUT ACCEPT", SSH_PRE]
+    rules += [WEB["pre"]] if web else []
+    rules += [SSH_OUT] if output else []
+    rules += [WEB["out"]] if web and output else []
+    return _lines(*rules, POSTROUTING)
+
+
+def _live_filter(*, web=False):
+    return _lines("-P FORWARD ACCEPT", *([WEB["fwd"], WEB["back"]] if web else []),
+                  SSH_FWD, SSH_BACK, *LIBVIRT_JUMPS)
+
+
+def _rules_v4(*, web=False):
+    """/etc/iptables/rules.v4 as iptables-save writes it; with web, the 80/443 lines sit
+    right after the 2225 lines they mirror."""
+    nat = [SSH_PRE, *([WEB["pre"]] if web else []), SSH_OUT, *([WEB["out"]] if web else []),
+           POSTROUTING]
+    flt = [SSH_FWD, *([WEB["fwd"]] if web else []), SSH_BACK, *([WEB["back"]] if web else []),
+           *LIBVIRT_JUMPS]
+    return _lines("*nat", ":PREROUTING ACCEPT [0:0]", ":OUTPUT ACCEPT [0:0]", *nat, "COMMIT",
+                  "*filter", ":FORWARD ACCEPT [0:0]", *flt, "COMMIT")
 
 
 def test_iptables_apply_mirrors_the_2225_forward_accept_and_output_rules(tmp_path):
-    bindir = _setup(tmp_path, ipt=LIVE_NAT, ipt_filter=LIVE_FILTER)
+    bindir = _setup(tmp_path, ipt=_live_nat(), ipt_filter=_live_filter())
     r = _run(tmp_path, bindir, "--apply")
     assert r.returncode == 0, r.stderr
     calls = _calls(tmp_path)
@@ -172,37 +166,25 @@ def test_iptables_apply_mirrors_the_2225_forward_accept_and_output_rules(tmp_pat
 
 
 def test_iptables_output_dnat_only_when_2225_has_one(tmp_path):
-    nat = "".join(line + "
-" for line in LIVE_NAT.splitlines() if "OUTPUT -o lo" not in line)
-    bindir = _setup(tmp_path, ipt=nat, ipt_filter=LIVE_FILTER)
+    bindir = _setup(tmp_path, ipt=_live_nat(output=False), ipt_filter=_live_filter())
     assert _run(tmp_path, bindir, "--apply").returncode == 0
     assert "-A OUTPUT" not in _calls(tmp_path)
     assert WEB["pre"] in _calls(tmp_path)
 
 
 def test_iptables_apply_saves_the_rules_next_to_the_2225_lines(tmp_path):
-    bindir = _setup(tmp_path, ipt=LIVE_NAT, ipt_filter=LIVE_FILTER)
-    original = _rules_v4()
-    (tmp_path / "rules.v4").write_text(original)
+    bindir = _setup(tmp_path, ipt=_live_nat(), ipt_filter=_live_filter())
+    (tmp_path / "rules.v4").write_text(_rules_v4())
     r = _run(tmp_path, bindir, "--apply")
     assert r.returncode == 0, r.stderr
-    saved = (tmp_path / "rules.v4").read_text()
-    assert saved == _rules_v4(nat_extra=WEB["pre"] + "
-",
-                              filter_extra=WEB["fwd"] + "
-" + WEB["back"] + "
-"
-                              ).replace(LIVE_NAT.splitlines()[3] + "
-",
-                                        LIVE_NAT.splitlines()[3] + "
-" + WEB["out"] + "
-")
+    assert (tmp_path / "rules.v4").read_text() == _rules_v4(web=True)
     assert "iptables-restore --test" in _calls(tmp_path)
-    assert [p.read_text() for p in tmp_path.glob("rules.v4.*.bak")] == [original]
+    assert (tmp_path / "restored").read_text() == _rules_v4(web=True)
+    assert [p.read_text() for p in tmp_path.glob("rules.v4.*.bak")] == [_rules_v4()]
 
 
 def test_iptables_rules_file_left_alone_when_the_restore_test_fails(tmp_path):
-    bindir = _setup(tmp_path, ipt=LIVE_NAT, ipt_filter=LIVE_FILTER)
+    bindir = _setup(tmp_path, ipt=_live_nat(), ipt_filter=_live_filter())
     (tmp_path / "rules.v4").write_text(_rules_v4())
     (tmp_path / "restore.code").write_text("1")
     r = _run(tmp_path, bindir, "--apply")
@@ -211,26 +193,15 @@ def test_iptables_rules_file_left_alone_when_the_restore_test_fails(tmp_path):
 
 
 def test_iptables_check_lists_the_rules_in_place_and_remove_deletes_them_all(tmp_path):
-    nat = LIVE_NAT + WEB["pre"] + "
-" + WEB["out"] + "
-"
-    flt = WEB["fwd"] + "
-" + WEB["back"] + "
-" + LIVE_FILTER
-    bindir = _setup(tmp_path, ipt=nat, ipt_filter=flt)
-    applied = _rules_v4(nat_extra=WEB["pre"] + "
-" + WEB["out"] + "
-",
-                        filter_extra=WEB["fwd"] + "
-" + WEB["back"] + "
-")
-    (tmp_path / "rules.v4").write_text(applied)
+    bindir = _setup(tmp_path, ipt=_live_nat(web=True), ipt_filter=_live_filter(web=True))
+    (tmp_path / "rules.v4").write_text(_rules_v4(web=True))
     r = _run(tmp_path, bindir, "--check")
     assert r.returncode == 0, r.stderr
     for rule in WEB.values():
         assert rule in r.stdout
-    assert "iptables -t" not in _calls(tmp_path).replace("iptables -t nat -S", "")         .replace("iptables -t filter -S", "")
-    assert (tmp_path / "rules.v4").read_text() == applied   # --check changes nothing
+    changes = [c for c in _calls(tmp_path).splitlines() if not c.endswith(" -S")]
+    assert changes == []   # --check changes nothing
+    assert (tmp_path / "rules.v4").read_text() == _rules_v4(web=True)
     (tmp_path / "calls.log").unlink()
     assert _run(tmp_path, bindir, "--remove").returncode == 0
     calls = _calls(tmp_path)
