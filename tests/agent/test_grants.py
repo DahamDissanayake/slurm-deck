@@ -66,7 +66,7 @@ def test_account_check_refuses_disabled_missing_and_no_store():
     check(store, "amasha")
     _inactive(check, store, "bob")
     _inactive(check, store, "nobody")
-    _inactive(check, None, "amasha")
+    _inactive(ActiveAccounts().check, None, "amasha")   # fresh cache: no store
 
 
 def test_account_check_is_cached_for_a_minute_per_username():
