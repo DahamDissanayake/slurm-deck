@@ -3,19 +3,24 @@ import { useCallback, useEffect, useState } from "react";
 import { ApiError } from "../api/client";
 import { type Env, type EnvList, envs } from "../api/envs";
 import { Link } from "../app/navigation";
-import { Panel } from "../components/Panel";
-import { field, primary, secondary } from "./NewJob/StepInputs";
+import { Card } from "../components/ui/Card";
+import { EnvIcon, PlusIcon } from "../components/icons";
+import { Button } from "../components/ui/Button";
+import { EmptyState } from "../components/ui/EmptyState";
+import { ErrorState } from "../components/ui/ErrorState";
+import { Skeleton } from "../components/ui/Skeleton";
+import { StatusBadge } from "../components/ui/StatusBadge";
+import { field } from "./NewJob/StepInputs";
 
 function Table({ title, rows }: { title: string; rows: Env[] }) {
   return (
-    <Panel title={title}>
-      {rows.length === 0 ? <p className="text-sm text-text-dim">None yet.</p> : (
-        <ul className="space-y-1 text-sm">
+    <Card title={title}>
+      {rows.length === 0 ? <EmptyState icon={<EnvIcon />} title="None yet" className="py-6" /> : (
+        <ul className="space-y-3 text-sm">
           {rows.map((e) => (
             <li key={e.path}>
               <span className="font-mono">{e.name}</span>{" "}
-              <span className={e.ready ? "text-ok" : "text-warning"}>
-                {e.ready ? "ready" : "not ready"}</span>
+              <StatusBadge state={e.ready ? "ok" : "building"} />
               {!!e.missing?.length && (
                 <span className="text-danger"> · Missing: {e.missing.join(", ")}</span>)}
               <span className="block text-xs text-text-dim">{e.path}</span>
@@ -23,7 +28,7 @@ function Table({ title, rows }: { title: string; rows: Env[] }) {
           ))}
         </ul>
       )}
-    </Panel>
+    </Card>
   );
 }
 
@@ -49,39 +54,46 @@ export function Environments() {
     }
   }
 
-  if (!list) return <Panel title="Environments"><p className="text-text-dim">{error || "Loading…"}</p></Panel>;
+  if (!list) {
+    return (
+      <Card title="Environments">
+        {error ? <ErrorState title="Couldn't load environments" error={error} onRetry={() => { setError(""); load(); }} />
+          : <Skeleton variant="row" label="Loading environments" />}
+      </Card>
+    );
+  }
   return (
     <div className="space-y-6">
       <div className="flex">
-        <button type="button" className={`${primary} ml-auto`} onClick={() => setDialog(true)}>
-          Build environment…</button>
+        <Button icon={<PlusIcon />} className="ml-auto" onClick={() => setDialog(true)}>
+          Build environment…</Button>
       </div>
       {dialog && (
-        <Panel title="Build environment">
-          {error && <p role="alert" className="mb-3 text-danger">{error}</p>}
+        <Card title="Build environment">
+          {error && <p role="alert" className="mb-3 rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
           <label className="block text-sm text-text-dim">Name
             <input className={field} value={name} onChange={(e) => setName(e.target.value)} /></label>
           <label className="block text-sm text-text-dim">Packages
             <input className={field} value={packages} placeholder="torch transformers"
                    onChange={(e) => setPackages(e.target.value)} /></label>
           <div className="flex gap-2">
-            <button type="button" className={secondary} onClick={() => setDialog(false)}>Cancel</button>
-            <button type="button" className={primary} disabled={!name} onClick={start}>Start build</button>
+            <Button variant="secondary" onClick={() => setDialog(false)}>Cancel</Button>
+            <Button disabled={!name} onClick={start}>Start build</Button>
           </div>
-        </Panel>
+        </Card>
       )}
       {list.builds.length > 0 && (
-        <Panel title="Builds">
+        <Card title="Builds">
           <ul className="space-y-1 text-sm">
             {list.builds.map((b) => (
               <li key={b.job_id}>
-                <span className="font-mono">{b.name}</span> · {b.state}
+                <span className="font-mono">{b.name}</span> <StatusBadge state={b.state} />
                 {b.missing.length > 0 && <span className="text-danger"> · Missing: {b.missing.join(", ")}</span>}
                 {" · "}<Link href={`/jobs/${b.job_id}`} className="text-accent">Build log</Link>
               </li>
             ))}
           </ul>
-        </Panel>
+        </Card>
       )}
       <Table title="Prebuilt" rows={list.prebuilt} />
       <Table title="My environments" rows={list.mine} />

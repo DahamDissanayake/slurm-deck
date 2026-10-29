@@ -5,14 +5,19 @@ import { formatBytes } from "../api/files";
 import { type Library, type ModelEntry, models } from "../api/models";
 import { usePolled } from "../api/poll";
 import { Link } from "../app/navigation";
-import { Panel } from "../components/Panel";
-import { field, primary } from "./NewJob/StepInputs";
+import { Card } from "../components/ui/Card";
+import { ModelIcon } from "../components/icons";
+import { Button } from "../components/ui/Button";
+import { EmptyState } from "../components/ui/EmptyState";
+import { Skeleton } from "../components/ui/Skeleton";
+import { StatusBadge } from "../components/ui/StatusBadge";
+import { field } from "./NewJob/StepInputs";
 
 function Table({ title, rows }: { title: string; rows: ModelEntry[] }) {
   return (
     <div className="mb-4">
-      <h3 className="mb-1 text-sm text-text-dim">{title}</h3>
-      {rows.length === 0 ? <p className="text-sm text-text-dim">Nothing here yet.</p> : (
+      <h3 className="mb-1 text-sm font-medium text-text-dim">{title}</h3>
+      {rows.length === 0 ? <EmptyState icon={<ModelIcon />} title="Nothing here yet" className="py-6" /> : (
         <table className="w-full text-left text-sm">
           <tbody>
             {rows.map((m) => (
@@ -35,12 +40,14 @@ export function Models() {
   const [revision, setRevision] = useState("");
   const [token, setToken] = useState("");
   const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
   const loadLibrary = useCallback(() => { models.library().then(setLibrary, () => setLibrary(null)); }, []);
   const { data: downloads } = usePolled(models.downloads, 5000);
   useEffect(loadLibrary, [loadLibrary]);
 
   async function start() {
     setNote("");
+    setBusy(true);
     try {
       const r = await models.download(repo.trim(), revision.trim(), token.trim());
       setNote(`Started job ${r.job_id}.`);
@@ -49,16 +56,22 @@ export function Models() {
       setToken("");   // gone as soon as it is sent: it is never kept
     } catch (e) {
       setNote(e instanceof ApiError && e.message ? e.message : "The download didn't start.");
+    } finally {
+      setBusy(false);
     }
   }
 
   return (
     <div className="space-y-6">
-      <Panel title="Models">
-        <Table title="Shared models" rows={library?.shared ?? []} />
-        <Table title="My models" rows={library?.mine ?? []} />
-      </Panel>
-      <Panel title="Download from HuggingFace">
+      <Card title="Models">
+        {library === null ? <Skeleton variant="row" count={2} label="Loading models" /> : (
+          <>
+            <Table title="Shared models" rows={library.shared} />
+            <Table title="My models" rows={library.mine} />
+          </>
+        )}
+      </Card>
+      <Card title="Download from HuggingFace">
         <div className="max-w-xl text-sm">
           <label className="block text-text-dim">Repository
             <input className={field} placeholder="meta-llama/Llama-3.1-8B" value={repo}
@@ -75,27 +88,25 @@ export function Models() {
           <p className="mb-3 text-text-dim">
             The token is used for this download only. It isn't saved, so you'll enter it again next time.
           </p>
-          <button type="button" className={primary} disabled={!repo.trim()} onClick={start}>
-            Download
-          </button>
-          {note && <p role="status" className="mt-2">{note}</p>}
+          <Button loading={busy} disabled={!repo.trim()} onClick={start}>Download</Button>
+          {note && <p role="status" className="mt-3 rounded-md bg-surface-2 px-3 py-2">{note}</p>}
         </div>
-      </Panel>
-      <Panel title="Recent downloads">
-        {(downloads ?? []).length === 0 ? <p className="text-sm text-text-dim">No downloads yet.</p> : (
+      </Card>
+      <Card title="Recent downloads">
+        {(downloads ?? []).length === 0 ? <EmptyState icon={<ModelIcon />} title="No downloads yet" className="py-6" /> : (
           <ul className="space-y-1 text-sm">
             {(downloads ?? []).map((d) => (
               <li key={d.job_id} className="flex flex-wrap gap-3">
                 <span className="font-mono">{d.repo_id}</span>
-                <span>{d.state === "done" ? `Done${d.bytes != null ? `, ${formatBytes(d.bytes)}` : ""}`
-                  : d.state === "running" ? "Downloading…" : "Failed"}</span>
+                <StatusBadge state={d.state === "done" ? "ok" : d.state === "running" ? "running" : "failed"} />
+                {d.state === "done" && d.bytes != null && <span>{formatBytes(d.bytes)}</span>}
                 {d.message && <span className="text-danger">{d.message}</span>}
                 <Link href={`/jobs/${d.job_id}`} className="text-accent">Log</Link>
               </li>
             ))}
           </ul>
         )}
-      </Panel>
+      </Card>
     </div>
   );
 }

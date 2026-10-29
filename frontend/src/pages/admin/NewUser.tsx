@@ -3,7 +3,7 @@ import { type FormEvent, useState } from "react";
 import { admin, day, gb, type Preview } from "../../api/admin";
 import { ApiError } from "../../api/client";
 import { navigate } from "../../app/navigation";
-import { Panel } from "../../components/Panel";
+import { Card } from "../../components/ui/Card";
 import { Alert, Field } from "../PublicPage";
 import { primaryButton } from "./AdminLayout";
 
@@ -52,7 +52,7 @@ export function NewUser() {
   }
 
   return (
-    <Panel title="New user">
+    <Card title="New user">
       <form onSubmit={submit} className="max-w-lg">
         {error && <Alert>{error}</Alert>}
         <Field label="Email" type="email" required value={email}
@@ -97,6 +97,6 @@ export function NewUser() {
         )}
         <button type="submit" className={primaryButton} disabled={!ready}>Create account</button>
       </form>
-    </Panel>
+    </Card>
   );
 }

@@ -4,7 +4,7 @@ import pkg from "../../package.json";
 import { getMe } from "../api/auth";
 import { Link } from "../app/navigation";
 import { ThemeToggle } from "../app/ThemeToggle";
-import { Panel } from "../components/Panel";
+import { Card } from "../components/ui/Card";
 import { Wordmark } from "../components/Wordmark";
 
 const REPO = "https://github.com/DahamDissanayake/slurm-deck/";
@@ -44,15 +44,15 @@ export function About() {
         </div>
       </header>
 
-      <Panel title="What Slurm Deck is">
+      <Card title="What Slurm Deck is">
         <p>
           An open-source platform for sharing GPU machines between researchers. People schedule
           jobs, manage files and datasets, and open notebook sessions from a browser. It is built
           to make everyday MLOps work on shared hardware easier.
         </p>
-      </Panel>
+      </Card>
 
-      <Panel title="How it started">
+      <Card title="How it started">
         <p>
           It began at the IIT research unit, which had a single GPU machine and several researchers
           who all needed to run models on it. There was no fair way to share it or queue work. The
@@ -60,23 +60,23 @@ export function About() {
           everyone&apos;s tasks with Slurm. It grew one requirement at a time into the version
           running today.
         </p>
-      </Panel>
+      </Card>
 
-      <Panel title="How it grew">
+      <Card title="How it grew">
         <ol className="space-y-3">
           {TIMELINE.map(([when, what]) => (
             <li key={when}><span className="font-mono text-accent">{when}</span><br />{what}</li>
           ))}
         </ol>
-      </Panel>
+      </Card>
 
-      <Panel title="What it does today">
+      <Card title="What it does today">
         <ul className="grid grid-cols-2 gap-1 sm:grid-cols-4">
           {FEATURES.map((f) => <li key={f}>{f}</li>)}
         </ul>
-      </Panel>
+      </Card>
 
-      <Panel title="People">
+      <Card title="People">
         <ul className="space-y-1">
           <li>
             <span>Daham Dissanayake</span>, creator,{" "}
@@ -86,14 +86,14 @@ export function About() {
             Supervisor, <Ext href="https://github.com/indrajithek">@indrajithek</Ext>
           </li>
         </ul>
-      </Panel>
+      </Card>
 
-      <Panel title="Open source">
+      <Card title="Open source">
         <p>
           MIT licence. Source at <Ext href={REPO}>github.com/DahamDissanayake/slurm-deck</Ext>.
           Other sites can run it on their own hardware, and contributions go through the repo.
         </p>
-      </Panel>
+      </Card>
 
       <footer className="text-center text-xs text-text-dim">
         Slurm Deck · v{pkg.version} · MIT

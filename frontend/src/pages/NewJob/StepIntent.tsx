@@ -1,12 +1,16 @@
+import type { ReactNode } from "react";
+
 import type { Template } from "../../api/newjob";
+import { BoltIcon, FileCodeIcon, ModelIcon, TerminalIcon } from "../../components/icons";
+import { focusRing } from "../../components/ui/cx";
 import { field } from "./StepInputs";
 
-const INTENTS = [
-  ["notebook", "Notebook", "JupyterLab in the browser"],
-  ["batch", "Script", "Train, fine-tune, run inference or anything else"],
-  ["terminal", "Terminal session", "A shell on the GPU node"],
-  ["smoke", "Smoke test", "A one-minute check that the GPU works; starts at once"],
-] as const;
+const INTENTS: [string, string, string, ReactNode][] = [
+  ["notebook", "Notebook", "JupyterLab in the browser", <ModelIcon key="n" />],
+  ["batch", "Script", "Train, fine-tune, run inference or anything else", <FileCodeIcon key="b" />],
+  ["terminal", "Terminal session", "A shell on the GPU node", <TerminalIcon key="t" />],
+  ["smoke", "Smoke test", "A one-minute check that the GPU works; starts at once", <BoltIcon key="s" />],
+];
 
 /** Step 1: what kind of job, or start from a saved template. */
 export function StepIntent({ terminalEnabled, templates, onPick, onTemplate, busy }: {
@@ -17,11 +21,17 @@ export function StepIntent({ terminalEnabled, templates, onPick, onTemplate, bus
   return (
     <div>
       <div className="grid gap-3 md:grid-cols-2">
-        {shown.map(([id, title, hint]) => (
+        {shown.map(([id, title, hint, icon]) => (
           <button key={id} type="button" disabled={busy} onClick={() => onPick(id)}
-                  className="rounded-sm border border-border bg-surface-2 p-4 text-left hover:border-accent disabled:opacity-50">
-            <span className="block font-semibold">{title}</span>
-            <span className="text-sm text-text-dim">{hint}</span>
+                  className={`flex items-start gap-4 rounded-lg border border-border bg-surface p-4 text-left shadow-sm transition-colors duration-fast hover:border-accent hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50 ${focusRing}`}>
+            <span aria-hidden="true"
+                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent [&>svg]:h-5 [&>svg]:w-5">
+              {icon}
+            </span>
+            <span>
+              <span className="block text-base font-semibold text-text">{title}</span>
+              <span className="text-sm text-text-dim">{hint}</span>
+            </span>
           </button>
         ))}
       </div>

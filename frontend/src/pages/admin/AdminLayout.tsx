@@ -38,12 +38,13 @@ export function AdminLayout() {
   const { pathname } = useLocation();
   return (
     <div>
-      <nav aria-label="Admin" className="mb-6 flex gap-4 border-b border-border">
+      <nav aria-label="Admin" className="mb-6 flex gap-4 overflow-x-auto border-b border-border">
         {TABS.map(([href, label]) => {
           const on = pathname.startsWith(href) || (href === "/admin/requests" && pathname === "/admin");
           return (
             <Link key={href} href={href}
-                  className={`-mb-px border-b-2 px-1 pb-2 text-sm ${on
+                  aria-current={on ? "page" : undefined}
+                  className={`-mb-px whitespace-nowrap border-b-2 px-1 pb-2 text-sm font-medium transition-colors duration-fast hover:text-text ${on
                     ? "border-accent text-accent" : "border-transparent text-text-dim"}`}>
               {label}
             </Link>
