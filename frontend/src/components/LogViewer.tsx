@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 
 import { logUrl, readLog } from "../api/jobs";
+import { DownloadIcon, SearchIcon } from "./icons";
+import { buttonClass } from "./ui/Button";
+import { cx } from "./ui/cx";
+import { Notice } from "./ui/Notice";
+import { SegmentedControl } from "./ui/SegmentedControl";
 
 const MAX = 1024 * 1024;
 const POLL_MS = 2000;
@@ -49,24 +54,28 @@ export function LogViewer({ jobId, running }: { jobId: string; running: boolean 
 
   return (
     <div>
-      <div className="mb-2 flex flex-wrap items-center gap-3 text-sm">
-        {(["out", "err"] as const).map((s) => (
-          <button key={s} type="button" onClick={() => setStream(s)} aria-pressed={stream === s}
-                  className={stream === s ? "text-accent" : "text-text-dim"}>
-            {s === "out" ? "Output" : "Errors"}
-          </button>
-        ))}
-        <input aria-label="Search the log" placeholder="Search" value={query}
-               onChange={(e) => setQuery(e.target.value)}
-               className="rounded-sm border border-border bg-surface-2 px-2 py-1 text-text" />
+      <div className="mb-3 flex flex-wrap items-center gap-3">
+        <SegmentedControl label="Log stream" value={stream} onChange={setStream}
+                          options={[{ value: "out", label: "Output" }, { value: "err", label: "Errors" }]} />
+        <label className="relative">
+          <span aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-dim [&>svg]:h-4 [&>svg]:w-4">
+            <SearchIcon />
+          </span>
+          <input aria-label="Search the log" placeholder="Search" value={query}
+                 onChange={(e) => setQuery(e.target.value)}
+                 className="h-8 w-48 rounded-full border border-border bg-surface pl-9 pr-3 text-md text-text placeholder:text-text-dim focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent" />
+        </label>
+        {running && <span className="text-xs text-text-dim">Updating every 2 s</span>}
         <a href={logUrl(jobId, stream)} download={`job-${jobId}.${stream}.log`}
-           className="ml-auto text-accent">Download</a>
+           className={cx(buttonClass({ variant: "secondary", size: "sm", pill: true }), "ml-auto gap-1.5 [&>svg]:h-4 [&>svg]:w-4")}>
+          <DownloadIcon />Download
+        </a>
       </div>
       {clipped && (
-        <p className="mb-2 text-sm text-warning">Showing the last 1 MB — Download for the full log.</p>
+        <Notice className="mb-3">Showing the last 1 MB. Download for the full log.</Notice>
       )}
-      {error && <p className="mb-2 text-sm text-text-dim">{error}</p>}
-      <pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-sm border border-border bg-bg p-3 font-mono text-xs">
+      {error && <p className="mb-3 text-md text-text-dim">{error}</p>}
+      <pre className="max-h-[32rem] min-h-24 overflow-auto whitespace-pre-wrap rounded-md border border-border bg-bg p-4 font-mono text-xs leading-5">
         {shown}
       </pre>
     </div>

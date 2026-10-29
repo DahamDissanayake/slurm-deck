@@ -1,24 +1,16 @@
-import { type ReactNode, useEffect } from "react";
+import { useEffect } from "react";
 
 import { useLive } from "../api/live";
 import { Link, useLocation } from "../app/navigation";
 import { ClusterCard, ClusterTiles, HardwareCard, useStatus } from "../components/ClusterCards";
-import { AlertIcon, FolderIcon, JobsIcon, PlusIcon, ServerIcon } from "../components/icons";
+import { FolderIcon, JobsIcon, PlusIcon, ServerIcon } from "../components/icons";
 import { JobCard } from "../components/JobCard";
 import { buttonClass } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { cx } from "../components/ui/cx";
 import { EmptyState } from "../components/ui/EmptyState";
+import { Notice } from "../components/ui/Notice";
 import { Skeleton } from "../components/ui/Skeleton";
-
-function Notice({ role, children }: { role: "status" | "alert"; children: ReactNode }) {
-  return (
-    <p role={role} className="flex items-center gap-2.5 rounded-md bg-warning-soft px-4 py-3 text-md text-warning">
-      <AlertIcon className="h-4 w-4 shrink-0" />
-      <span>{children}</span>
-    </p>
-  );
-}
 
 const QUICK = [
   { href: "/new", label: "New job", icon: <PlusIcon />, variant: "primary" },
@@ -39,7 +31,7 @@ export function Home() {
 
   return (
     <div className="space-y-6">
-      {cluster?.maintenance && <Notice role="status">{cluster.maintenance}</Notice>}
+      {cluster?.maintenance && <Notice>{cluster.maintenance}</Notice>}
       <ClusterTiles cluster={cluster} />
       <nav aria-label="Quick actions" className="flex flex-wrap gap-2">
         {QUICK.map(({ href, label, icon, variant }) => (
@@ -55,7 +47,7 @@ export function Home() {
             {banners.length > 0 && (
               <div className="mb-4 space-y-2">
                 {banners.map((b) => (
-                  <Notice key={b.job_id} role="alert">
+                  <Notice key={b.job_id} alert>
                     Job {b.job_id} ends in {b.minutes_left ?? "a few"} minutes. Extend it from its card.
                   </Notice>
                 ))}
