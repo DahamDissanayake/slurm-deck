@@ -3,10 +3,12 @@ import { useEffect, useState } from "react";
 import { envs } from "../../api/envs";
 import type { LaunchSpec } from "../../api/newjob";
 import { FilePicker } from "../../components/FilePicker";
-import { full, input, primary, secondary } from "../../components/controls";
+import { full, input } from "../../components/controls";
+import { Button } from "../../components/ui/Button";
+import { primary, secondary } from "../../components/controls";
 
-export const field = `${input} ${full} mt-1 mb-3 block`;
 export { primary, secondary };
+export const field = `${input} ${full} mt-1 mb-3 block`;
 
 type Key = "script" | "conda_env" | "data_path" | "model_path" | "args" | "packages";
 
@@ -49,8 +51,8 @@ export function StepInputs({ spec, onChange, onBack, onNext }: {
                    onChange={(e) => onChange({ ...spec, [key]: e.target.value })} />
           </label>
           {PICK[key] && (
-            <button type="button" className={`${secondary} mb-3`} aria-label={`Browse for ${label}`}
-                    onClick={() => setPicking(key)}>Browse</button>
+            <Button variant="secondary" className="mb-3" aria-label={`Browse for ${label}`}
+                    onClick={() => setPicking(key)}>Browse</Button>
           )}
         </div>
       ))}
@@ -60,8 +62,8 @@ export function StepInputs({ spec, onChange, onBack, onNext }: {
                     onPick={(path) => onChange({ ...spec, [picking]: path })} />
       )}
       <div className="flex gap-2">
-        <button type="button" className={secondary} onClick={onBack}>Back</button>
-        <button type="button" className={primary} onClick={onNext}>Next</button>
+        <Button variant="secondary" onClick={onBack}>Back</Button>
+        <Button onClick={onNext}>Next</Button>
       </div>
     </div>
   );
