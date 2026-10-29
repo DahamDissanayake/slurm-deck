@@ -3,7 +3,7 @@ import { type FormEvent, useState } from "react";
 import { apply, type Application } from "../api/auth";
 import { ApiError } from "../api/client";
 import { Link } from "../app/navigation";
-import { Alert, button, Field, PublicPage } from "./PublicPage";
+import { Alert, Field, PublicPage, SubmitButton } from "./PublicPage";
 
 const EMPTY: Application = { email: "", full_name: "", role_title: "", organisation: "",
                              contact_number: "", reason: "", website: "" };
@@ -11,17 +11,21 @@ const EMPTY: Application = { email: "", full_name: "", role_title: "", organisat
 /** The Apply for access form (spec §5.4); the server's words are shown as they are. */
 export function Apply() {
   const [form, setForm] = useState(EMPTY);
+  const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
   const set = (key: keyof Application) => (e: { target: { value: string } }) =>
     setForm({ ...form, [key]: e.target.value });
 
   async function submit(e: FormEvent) {
     e.preventDefault();
+    setBusy(true);
     try {
       setResult({ ok: true, text: (await apply(form)).message });
     } catch (err) {
       setResult({ ok: false, text: err instanceof ApiError && err.message
         ? err.message : "The application couldn't be sent. Try again later." });
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -49,7 +53,7 @@ export function Apply() {
         {/* Honeypot: hidden from people, filled in by bots. */}
         <input type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true"
                className="hidden" value={form.website} onChange={set("website")} />
-        <button type="submit" className={button}>Send application</button>
+        <SubmitButton loading={busy}>Send application</SubmitButton>
       </form>
     </PublicPage>
   );

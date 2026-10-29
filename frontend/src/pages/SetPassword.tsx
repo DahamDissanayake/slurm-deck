@@ -3,7 +3,7 @@ import { type FormEvent, useState } from "react";
 import { setPassword } from "../api/auth";
 import { ApiError } from "../api/client";
 import { Link, navigate } from "../app/navigation";
-import { Alert, button, Field, PublicPage } from "./PublicPage";
+import { Alert, Field, PublicPage, SubmitButton } from "./PublicPage";
 
 const LINK_ERRORS: Record<string, string> = {
   link_used: "This link has already been used. Ask for a new one.",
@@ -20,6 +20,7 @@ function tokenFromFragment(): string {
 export function SetPassword() {
   const [pw, setPw] = useState("");
   const [again, setAgain] = useState("");
+  const [busy, setBusy] = useState(false);
   const [problems, setProblems] = useState<string[]>([]);
 
   async function submit(e: FormEvent) {
@@ -28,10 +29,12 @@ export function SetPassword() {
       setProblems(["The two passwords don't match."]);
       return;
     }
+    setBusy(true);
     try {
       await setPassword(tokenFromFragment(), pw);
       navigate("/");
     } catch (err) {
+      setBusy(false);
       const code = err instanceof ApiError ? err.code : "";
       setProblems(LINK_ERRORS[code] ? [LINK_ERRORS[code]]
         : err instanceof ApiError && err.message ? [err.message]
@@ -50,7 +53,7 @@ export function SetPassword() {
         <p className="mb-4 text-xs text-text-dim">
           At least 12 characters; not a common password; not your email or username.
         </p>
-        <button type="submit" className={button}>Set password</button>
+        <SubmitButton loading={busy}>Set password</SubmitButton>
       </form>
       <Link href="/forgot-password" className="mt-4 block text-sm text-accent">
         Need a new link?

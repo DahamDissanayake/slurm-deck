@@ -1,10 +1,12 @@
 import { type InputHTMLAttributes, type ReactNode, useId } from "react";
-import { full, input, primary } from "../components/controls";
+import { full, input } from "../components/controls";
+import { AlertIcon, CheckIcon } from "../components/icons";
+import { Button } from "../components/ui/Button";
+import { Card } from "../components/ui/Card";
 
 import pkg from "../../package.json";
 import { Link } from "../app/navigation";
 import { ThemeToggle } from "../app/ThemeToggle";
-import { Panel } from "../components/Panel";
 import { Wordmark } from "../components/Wordmark";
 
 const SOURCE = "https://github.com/DahamDissanayake/slurm-deck";
@@ -20,7 +22,7 @@ export function PublicPage({ title, children }: { title: string; children: React
         </div>
         <ThemeToggle />
       </div>
-      <Panel title={title}>{children}</Panel>
+      <Card title={title} className="shadow-md">{children}</Card>
       <footer className="text-center text-xs text-text-dim">
         Slurm Deck · v{pkg.version} · MIT ·{" "}
         <Link href="/about" className="text-accent">About</Link> ·{" "}
@@ -45,10 +47,17 @@ export function Field({ label, ...rest }: InputHTMLAttributes<HTMLInputElement> 
 
 export function Alert({ children, tone = "danger" }: { children: ReactNode; tone?: "danger" | "ok" }) {
   return (
-    <p role="alert" className={`mb-4 text-sm ${tone === "ok" ? "text-ok" : "text-danger"}`}>
-      {children}
+    <p role="alert" className={`mb-4 flex items-start gap-2 rounded-md px-3 py-2 text-sm ${tone === "ok"
+      ? "bg-ok-soft text-ok" : "bg-danger-soft text-danger"}`}>
+      <span aria-hidden="true" className="mt-0.5 inline-flex shrink-0 [&>svg]:h-4 [&>svg]:w-4">
+        {tone === "ok" ? <CheckIcon /> : <AlertIcon />}
+      </span>
+      <span>{children}</span>
     </p>
   );
 }
 
-export const button = `${primary} ${full}`;
+/** The full-width submit button; shows the spinner while the request runs. */
+export function SubmitButton({ loading = false, children }: { loading?: boolean; children: ReactNode }) {
+  return <Button type="submit" loading={loading} className="w-full">{children}</Button>;
+}

@@ -3,7 +3,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import { applyOpen, signIn, siteInfo } from "../api/auth";
 import { ApiError } from "../api/client";
 import { Link, navigate } from "../app/navigation";
-import { Alert, button, Field, PublicPage } from "./PublicPage";
+import { Alert, Field, PublicPage, SubmitButton } from "./PublicPage";
 
 function explain(e: unknown): string {
   if (!(e instanceof ApiError)) return "The cluster isn't answering. Try again in a moment.";
@@ -54,7 +54,7 @@ export function SignIn() {
                onChange={(e) => setEmail(e.target.value)} />
         <Field label="Password" type="password" autoComplete="current-password" required
                value={password} onChange={(e) => setPassword(e.target.value)} />
-        <button type="submit" className={button} disabled={busy}>Sign in</button>
+        <SubmitButton loading={busy}>Sign in</SubmitButton>
       </form>
       <div className="mt-4 flex justify-between text-sm">
         <Link href="/forgot-password" className="text-accent">Forgot password</Link>
