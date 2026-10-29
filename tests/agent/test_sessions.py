@@ -18,7 +18,7 @@ def _row(username="amasha", role="user", kind="hidden", status="active",
          created=timedelta(hours=1), seen=timedelta(minutes=1), acting_as=None) -> SessionRow:
     return SessionRow(username=username, role=role, linux_kind=kind, uid=20001, status=status,
                       created_at=NOW - created, last_seen_at=NOW - seen,
-                      acting_as_username=acting_as)
+                      acting_as_username=acting_as, email=f"{username}@example.org")
 
 
 class FakeStore:
@@ -58,7 +58,8 @@ def _status(row: SessionRow | None, **kw) -> int:
 
 
 def test_active_session_resolves_to_its_account():
-    assert _resolve(_row()) == Caller("amasha", "user", "hidden", False, None)
+    assert _resolve(_row()) == Caller("amasha", "user", "hidden", False, None,
+                                      "amasha@example.org")
 
 
 def test_expired_idle_session_refused():
@@ -99,6 +100,7 @@ def test_act_as_shell_target_refused():
 def test_act_as_resolves_target_and_records_admin():
     c = _resolve(_row("dinuka", role="admin", acting_as="amasha"))
     assert (c.username, c.role, c.acting_admin) == ("amasha", "user", "dinuka")
+    assert c.email == "amasha@example.org"   # the viewed user's, never the admin's
 
 
 def test_admin_session_still_checks_its_own_expiry_when_acting_as():
@@ -108,7 +110,7 @@ def test_admin_session_still_checks_its_own_expiry_when_acting_as():
 
 def test_listed_admin_row_resolves_to_admin():
     assert _resolve(_row("dinuka", role="admin")) == Caller("dinuka", "admin", "hidden",
-                                                            False, None)
+                                                            False, None, "dinuka@example.org")
 
 
 def test_forged_admin_row_not_in_the_admins_file_is_downgraded_to_user():
@@ -191,16 +193,16 @@ def test_pg_store_reads_view():
         conn.execute("DROP TABLE IF EXISTS t_sessions, t_accounts")
         conn.execute("""CREATE TABLE t_accounts (username text primary key, role text,
             linux_kind text, uid int, status text, created_at timestamptz,
-            last_seen_at timestamptz)""")
+            last_seen_at timestamptz, email text)""")
         conn.execute("""CREATE TABLE t_sessions (token_hash text primary key, username text,
             created_at timestamptz, last_seen_at timestamptz, acting_as_username text)""")
         conn.execute("""CREATE VIEW agent_accounts AS SELECT username, role, linux_kind, uid,
-            status, created_at, last_seen_at FROM t_accounts""")
+            status, created_at, last_seen_at, email FROM t_accounts""")
         conn.execute("""CREATE VIEW agent_sessions AS SELECT s.token_hash, a.username, a.role,
-            a.linux_kind, a.uid, a.status, s.created_at, s.last_seen_at, s.acting_as_username
-            FROM t_sessions s JOIN t_accounts a USING (username)""")
+            a.linux_kind, a.uid, a.status, s.created_at, s.last_seen_at, s.acting_as_username,
+            a.email FROM t_sessions s JOIN t_accounts a USING (username)""")
         conn.execute("INSERT INTO t_accounts VALUES ('amasha','user','hidden',20001,'active',"
-                     "%s,%s)", (NOW, NOW))
+                     "%s,%s,'amasha@example.org')", (NOW, NOW))
         conn.execute("INSERT INTO t_sessions VALUES (%s,'amasha',%s,%s,NULL)",
                      (hash_token("tok"), NOW - timedelta(hours=1), NOW))
     try:
@@ -209,9 +211,11 @@ def test_pg_store_reads_view():
         assert row is not None and (row.username, row.uid, row.status) == ("amasha", 20001,
                                                                            "active")
         assert row.last_seen_at == NOW and row.acting_as_username is None
+        assert row.email == "amasha@example.org"
         assert store.lookup(hash_token("other")) is None
         acct = store.account("amasha")
         assert acct is not None and acct.linux_kind == "hidden"
+        assert acct.email == "amasha@example.org"
         assert store.account("nobody") is None
     finally:
         with psycopg.connect(dsn, autocommit=True) as conn:

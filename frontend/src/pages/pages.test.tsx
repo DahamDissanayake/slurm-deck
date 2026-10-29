@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ThemeToggle } from "../app/ThemeToggle";
-import { ViewAsBanner } from "../app/ViewAsBanner";
+import { ViewAsPill } from "../app/ViewAsBanner";
 import { mockFetch } from "../test/fetch";
 import { SetPassword } from "./SetPassword";
 import { SignIn } from "./SignIn";
@@ -72,7 +72,7 @@ describe("ThemeToggle", () => {
       throw new Error("blocked");
     });
     render(<ThemeToggle />);
-    expect(screen.getByRole("button", { name: /theme$/ })).toHaveAttribute("title");
+    expect(screen.getByRole("button", { name: /theme$/ })).toHaveAttribute("aria-label");
     fireEvent.click(screen.getByRole("button"));
     const first = document.documentElement.dataset.theme;
     expect(["light", "dark"]).toContain(first);
@@ -81,15 +81,14 @@ describe("ThemeToggle", () => {
   });
 });
 
-describe("ViewAsBanner", () => {
+describe("ViewAsPill", () => {
   it("renders only while viewing as someone", () => {
-    const { rerender } = render(<ViewAsBanner actingAs={null} onStop={() => {}} />);
+    const { rerender } = render(<ViewAsPill actingAs={null} onStop={() => {}} />);
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
     const stop = vi.fn();
-    rerender(<ViewAsBanner actingAs="amasha" onStop={stop} />);
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "Viewing as amasha — every action is recorded.");
-    fireEvent.click(screen.getByRole("button", { name: "Stop viewing" }));
+    rerender(<ViewAsPill actingAs="amasha" onStop={stop} />);
+    expect(screen.getByRole("status")).toHaveTextContent("Viewing as amasha. Every action is recorded.");
+    fireEvent.click(screen.getByRole("button", { name: "Stop viewing as amasha" }));
     expect(stop).toHaveBeenCalled();
   });
 });

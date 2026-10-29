@@ -38,14 +38,14 @@ describe("JobCard", () => {
   it("offers Extend and Cancel for a running job", () => {
     render(<JobCard job={JOB} />);
     expect(screen.getByText("Running")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Extend…" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Extend time" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
   });
 
   it("hides Extend and Cancel once the job has ended", () => {
     render(<JobCard job={{ ...JOB, state: "COMPLETED" }} />);
-    expect(screen.getByText("Ended")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Extend…" })).toBeNull();
+    expect(screen.getByText("Completed")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Extend time" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
     expect(screen.getByRole("link", { name: "Rerun" })).toBeInTheDocument();
   });

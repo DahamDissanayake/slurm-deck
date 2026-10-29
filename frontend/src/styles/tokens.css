@@ -1,65 +1,148 @@
-/* Design tokens (spec §6). Components use these through the Tailwind theme,
-   never as literal colours. Dark is the default; the OS light preference
-   switches to light unless the in-app toggle chose dark; the toggle's
-   data-theme overrides the OS either way. No external fonts: the LAN may
-   have no internet. */
+/* Design tokens v2 (modern UI redesign). Components use these through the
+   Tailwind theme, never as literal colours. Dark is the default; the OS light
+   preference switches to light unless the in-app toggle chose dark; the
+   toggle's data-theme overrides the OS either way. No external fonts: the LAN
+   may have no internet. Each *-soft colour is a tinted background for its
+   tone; *-fg is text drawn on the solid tone. */
 
 :root {
   color-scheme: dark;
-  --bg: #0A0E13;
-  --surface: #12181F;
-  --surface-2: #1A222C;
-  --border: #26313D;
-  --text: #E7ECF1;
-  --text-dim: #7E8CA0;
-  --accent: #3FD9E8;
-  --danger: #FF6B6B;
-  --warning: #F5B94A;
+  --bg: #0E131A;
+  --surface: #151B23;
+  --surface-2: #1C242E;
+  --border: #29333F;
+  --border-strong: #3A4656;
+  --text: #E6EBF1;
+  --text-dim: #8C99AB;
+  --accent: #8B9CFF;
+  --accent-strong: #A9B6FF;
+  --accent-soft: #8B9CFF24;
+  --accent-fg: #0E131A;
   --ok: #4ADE80;
+  --ok-soft: #4ADE8022;
+  --warning: #F5B94A;
+  --warning-soft: #F5B94A22;
+  --danger: #FF6B6B;
+  --danger-soft: #FF6B6B22;
+  --info: #5BC0EB;
+  --info-soft: #5BC0EB22;
+  --neutral-soft: #8C99AB22;
+  --shadow-sm: 0 1px 2px #00000059;
+  --shadow-md: 0 4px 12px #00000066, 0 1px 3px #0000004D;
+  --shadow-lg: 0 12px 32px #00000080, 0 2px 6px #0000004D;
+
   --font-mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, "Roboto Mono", monospace;
-  --font-ui: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-md: 14px;
+  --text-base: 16px;
+  --text-lg: 20px;
+  --text-xl: 24px;
+  --text-2xl: 30px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-full: 9999px;
+  --space: 4px;
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --duration-slow: 320ms;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
     color-scheme: light;
-    --bg: #F3F6F8;
+    --bg: #F4F6F9;
     --surface: #FFFFFF;
-    --surface-2: #EEF2F5;
-    --border: #D7DEE5;
-    --text: #16202B;
-    --text-dim: #5B6B7C;
-    --accent: #0E93A3;
-    --danger: #C62828;
-    --warning: #9A6400;
+    --surface-2: #EDF0F5;
+    --border: #DAE0E8;
+    --border-strong: #BCC5D1;
+    --text: #17202B;
+    --text-dim: #5A6779;
+    --accent: #4152D9;
+    --accent-strong: #3242C2;
+    --accent-soft: #4152D91A;
+    --accent-fg: #FFFFFF;
     --ok: #1B7F3B;
+    --ok-soft: #1B7F3B1A;
+    --warning: #9A6400;
+    --warning-soft: #C17D001F;
+    --danger: #C62828;
+    --danger-soft: #C628281A;
+    --info: #0B6E99;
+    --info-soft: #0B6E991A;
+    --neutral-soft: #5A67791A;
+    --shadow-sm: 0 1px 2px #17202B14;
+    --shadow-md: 0 4px 12px #17202B14, 0 1px 3px #17202B0F;
+    --shadow-lg: 0 12px 32px #17202B1F, 0 2px 6px #17202B0F;
   }
 }
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg: #F3F6F8;
+  --bg: #F4F6F9;
   --surface: #FFFFFF;
-  --surface-2: #EEF2F5;
-  --border: #D7DEE5;
-  --text: #16202B;
-  --text-dim: #5B6B7C;
-  --accent: #0E93A3;
-  --danger: #C62828;
-  --warning: #9A6400;
+  --surface-2: #EDF0F5;
+  --border: #DAE0E8;
+  --border-strong: #BCC5D1;
+  --text: #17202B;
+  --text-dim: #5A6779;
+  --accent: #4152D9;
+  --accent-strong: #3242C2;
+  --accent-soft: #4152D91A;
+  --accent-fg: #FFFFFF;
   --ok: #1B7F3B;
+  --ok-soft: #1B7F3B1A;
+  --warning: #9A6400;
+  --warning-soft: #C17D001F;
+  --danger: #C62828;
+  --danger-soft: #C628281A;
+  --info: #0B6E99;
+  --info-soft: #0B6E991A;
+  --neutral-soft: #5A67791A;
+  --shadow-sm: 0 1px 2px #17202B14;
+  --shadow-md: 0 4px 12px #17202B14, 0 1px 3px #17202B0F;
+  --shadow-lg: 0 12px 32px #17202B1F, 0 2px 6px #17202B0F;
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #0A0E13;
-  --surface: #12181F;
-  --surface-2: #1A222C;
-  --border: #26313D;
-  --text: #E7ECF1;
-  --text-dim: #7E8CA0;
-  --accent: #3FD9E8;
-  --danger: #FF6B6B;
-  --warning: #F5B94A;
+  --bg: #0E131A;
+  --surface: #151B23;
+  --surface-2: #1C242E;
+  --border: #29333F;
+  --border-strong: #3A4656;
+  --text: #E6EBF1;
+  --text-dim: #8C99AB;
+  --accent: #8B9CFF;
+  --accent-strong: #A9B6FF;
+  --accent-soft: #8B9CFF24;
+  --accent-fg: #0E131A;
   --ok: #4ADE80;
+  --ok-soft: #4ADE8022;
+  --warning: #F5B94A;
+  --warning-soft: #F5B94A22;
+  --danger: #FF6B6B;
+  --danger-soft: #FF6B6B22;
+  --info: #5BC0EB;
+  --info-soft: #5BC0EB22;
+  --neutral-soft: #8C99AB22;
+  --shadow-sm: 0 1px 2px #00000059;
+  --shadow-md: 0 4px 12px #00000066, 0 1px 3px #0000004D;
+  --shadow-lg: 0 12px 32px #00000080, 0 2px 6px #0000004D;
+}
+
+/* Reduced motion: zero the durations and stop every animation. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration-base: 0ms;
+    --duration-slow: 0ms;
+  }
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+  }
 }

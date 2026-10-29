@@ -4,8 +4,12 @@ import { ApiError } from "../api/client";
 import { jobs, type QueueJob } from "../api/jobs";
 import { sessions } from "../api/sessions";
 import { OpenButton } from "../components/OpenButton";
-import { smallButton, StateChip } from "../components/JobCard";
-import { Panel } from "../components/Panel";
+import { Button } from "../components/ui/Button";
+import { EmptyState } from "../components/ui/EmptyState";
+import { Skeleton } from "../components/ui/Skeleton";
+import { StatusBadge } from "../components/ui/StatusBadge";
+import { ServerIcon } from "../components/icons";
+import { Card } from "../components/ui/Card";
 import { StartTensorBoard } from "../components/StartTensorBoard";
 
 const POLL_MS = 5000;
@@ -37,25 +41,25 @@ export function Services() {
   }
 
   return (
-    <Panel title="Services">
+    <Card title="Services">
       <div className="mb-4"><StartTensorBoard onStarted={load} /></div>
-      {error && <p role="alert" className="mb-3 text-danger">{error}</p>}
-      {rows === null ? <p className="text-text-dim">Loading…</p>
-        : rows.length === 0 ? <p className="text-text-dim">You have no sessions running.</p> : (
-          <ul className="space-y-2">
+      {error && <p role="alert" className="mb-3 rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
+      {rows === null ? <Skeleton variant="row" label="Loading services" />
+        : rows.length === 0 ? <EmptyState icon={<ServerIcon />} title="You have no sessions running">Start a notebook, terminal or TensorBoard to see it here.</EmptyState> : (
+          <ul className="space-y-3">
             {rows.map((j) => (
-              <li key={j.job_id} className="flex flex-wrap items-center gap-3">
-                <StateChip state={j.state} />
+              <li key={j.job_id} className="flex flex-wrap items-center gap-3 rounded-md border border-border bg-surface-2 px-3 py-2">
+                <StatusBadge state={j.state} />
                 <span className="text-xs text-text-dim">{LABEL[j.kind as keyof typeof LABEL]}</span>
                 <span className="font-mono text-sm">{j.name ?? j.job_id}</span>
                 <span className="ml-auto flex gap-2">
                   <OpenButton jobId={j.job_id} />
-                  <button type="button" className={smallButton} onClick={() => stop(j)}>Stop</button>
+                  <Button size="sm" variant="secondary" onClick={() => stop(j)}>Stop</Button>
                 </span>
               </li>
             ))}
           </ul>
         )}
-    </Panel>
+    </Card>
   );
 }

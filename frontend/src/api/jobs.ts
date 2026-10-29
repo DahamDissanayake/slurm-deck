@@ -48,6 +48,21 @@ export function duration(seconds: number | null): string {
   return h ? `${h} h ${m} min` : `${m} min`;
 }
 
+/** Seconds in a Slurm clock such as "8:00:00", "45:10" or "1-02:00:00"; null for "UNLIMITED" and the like. */
+export function clockSeconds(clock: string): number | null {
+  const m = /^(?:(\d+)-)?(?:(\d+):)?(\d+):(\d+)$/.exec(clock.trim());
+  if (!m) return null;
+  const [, d, h, min, sec] = m;
+  return Number(d ?? 0) * 86400 + Number(h ?? 0) * 3600 + Number(min) * 60 + Number(sec);
+}
+
+/** A short time left for a small ring: "2d", "7h", "45m". */
+export function compact(seconds: number): string {
+  if (seconds >= 86400) return `${Math.floor(seconds / 86400)}d`;
+  if (seconds >= 3600) return `${Math.floor(seconds / 3600)}h`;
+  return `${Math.max(0, Math.floor(seconds / 60))}m`;
+}
+
 const post = (path: string, json?: unknown) => apiFetch(path, { method: "POST", json });
 
 export const jobs = {

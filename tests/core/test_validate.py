@@ -254,6 +254,12 @@ def test_validate_sbatch_mail_user_own_address_ok(tmp_path):
     ("--uid=0", {}, "--uid"),
     ("--gid=0", {}, "--gid"),
     ("--get-user-env", {}, "--get-user-env"),
+    ("--get-user-env=10L", {}, "--get-user-env"),
+    ("--export=NONE", {}, "--export"),       # NONE implies --get-user-env
+    ("--export=ALL", {}, "--export"),
+    ("--export=ALL,LD_PRELOAD=/x.so", {}, "--export"),
+    ("--export NONE", {}, "--export"),
+    ("--export=NIL --export=NONE", {}, "--export"),  # a later flag overrides NIL
     ("--mail-user=attacker@evil.com", {"email": None}, "mail-user"),  # fail closed
     ("--mail-user=someone@else.com", {}, "mail-user"),
     ("--gres=gpu:8", {"max_gpus": 2}, "GPU"),
@@ -266,6 +272,11 @@ def test_validate_sbatch_rejects(tmp_path, line, limits, expected):
     (_job_dir(tmp_path, "bob") / "train_x").mkdir()
     errors = _v("#SBATCH " + line.format(root=tmp_path) + "\n", tmp_path, **limits)
     assert any(expected in e for e in errors), errors
+
+
+def test_validate_sbatch_accepts_export_nil(tmp_path):
+    _user_dir(tmp_path)
+    assert _v("#SBATCH --export=NIL\n", tmp_path) == []
 
 
 def test_validate_sbatch_mem_in_megabytes(tmp_path):

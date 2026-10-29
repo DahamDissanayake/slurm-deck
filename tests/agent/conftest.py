@@ -31,10 +31,15 @@ PLAIN = ("sacct", "sacctmgr", "scancel", "sbatch", "useradd", "groupadd", "userd
 
 
 class FakeStore:
-    """Every account is an active user unless its name is in disabled."""
+    """Every account is an active user unless its name is in disabled. Its
+    email is <name>@example.org unless emails says otherwise (None: no email)."""
 
     def __init__(self) -> None:
         self.disabled: set[str] = set()
+        self.emails: dict[str, str | None] = {}
+
+    def email(self, username: str) -> str | None:
+        return self.emails.get(username, f"{username}@example.org")
 
     def account(self, username: str) -> Any:
         from types import SimpleNamespace
@@ -90,7 +95,7 @@ def agent(tmp_path, monkeypatch):
         role, _, name = token.partition(":")
         if not name:
             raise AgentError("no_session", "Sign in again.", 401)
-        return Caller(name, role, "hidden", False, None)
+        return Caller(name, role, "hidden", False, None, store.email(name))
 
     env = {"SD_AGENT_SOCKET": str(tmp_path / "agent.sock"), "SD_WEB_UID": str(os.getuid()),
            "SD_WORKER_UID": "1", "SD_SLURM_BIN": str(bindir), "SD_COMPUTE_NODE": "gpu1",

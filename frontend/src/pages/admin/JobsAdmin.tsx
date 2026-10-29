@@ -6,7 +6,7 @@ import { isLive, jobs, type QueueJob } from "../../api/jobs";
 import { usePolled } from "../../api/poll";
 import { Link } from "../../app/navigation";
 import { StateChip } from "../../components/JobCard";
-import { Panel } from "../../components/Panel";
+import { Card } from "../../components/ui/Card";
 import { smallButton } from "./AdminLayout";
 
 type Tab = "queue" | "history";
@@ -29,7 +29,7 @@ export function JobsAdmin() {
   }
 
   return (
-    <Panel title="Jobs">
+    <Card title="Jobs">
       <div role="tablist" className="mb-4 flex gap-4 border-b border-border text-sm">
         {(["queue", "history"] as const).map((t) => (
           <button key={t} role="tab" type="button" aria-selected={tab === t} onClick={() => setTab(t)}
@@ -40,7 +40,7 @@ export function JobsAdmin() {
         ))}
       </div>
       {(error || failed) && <p role="alert" className="mb-2 text-danger">{error || "Couldn't load jobs."}</p>}
-      <table className="w-full text-left text-sm">
+      <table className="w-full text-left text-sm [&_th]:py-2 [&_th]:font-medium [&_td]:py-2">
         <thead className="text-text-dim">
           <tr><th>Job</th><th>User</th><th>State</th><th>Pods</th><th>Time</th><th /></tr>
         </thead>
@@ -58,6 +58,6 @@ export function JobsAdmin() {
           ))}
         </tbody>
       </table>
-    </Panel>
+    </Card>
   );
 }

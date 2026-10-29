@@ -210,3 +210,24 @@ def test_username_rule_matches_sdcore():
     loader.exec_module(helper)
     assert helper.USERNAME_RE.pattern == USERNAME_RE.pattern
     assert helper.RESERVED == RESERVED
+
+
+def test_child_command_output_never_reaches_stdout(tmp_path):
+    """passwd prints "passwd: password changed." on stdout; deck-agent parses the
+    helper's stdout as one JSON object, so child output must go to stderr."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    for name in ("groupadd", "useradd", "passwd", "chown"):
+        stub = bin_dir / name
+        stub.write_text(f"#!/bin/sh\necho '{name}: password changed.'\n")
+        stub.chmod(0o755)
+    fake = tmp_path / "accounts.json"
+    fake.write_text("{}")
+    env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}",
+           "SSH_ORIGINAL_COMMAND": "create-account amasha 23456"}
+    r = subprocess.run([sys.executable, str(HELPER), "--root", str(tmp_path),
+                        "--fake-accounts", str(fake)],
+                       capture_output=True, text=True, env=env)
+    assert r.returncode == 0, (r.stdout, r.stderr)
+    assert json.loads(r.stdout) == {"ok": True}
+    assert "passwd: password changed." in r.stderr

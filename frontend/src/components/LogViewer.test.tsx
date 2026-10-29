@@ -31,6 +31,15 @@ describe("LogViewer", () => {
       .toBe(true));
   });
 
+  it("switches between the output and error streams", async () => {
+    const calls = serveLog("hello");
+    render(<LogViewer jobId="512" running={false} />);
+    await screen.findByText(/hello/);
+    fireEvent.click(screen.getByRole("radio", { name: "Errors" }));
+    await vi.waitFor(() => expect(calls.some((c) => c.includes("stream=err"))).toBe(true));
+    expect(screen.getByRole("link", { name: "Download" })).toHaveAttribute("download", "job-512.err.log");
+  });
+
   it("filters lines with the search box", async () => {
     serveLog("epoch 1 loss 0.9\nepoch 2 loss 0.5\nsaving\n");
     render(<LogViewer jobId="512" running={false} />);

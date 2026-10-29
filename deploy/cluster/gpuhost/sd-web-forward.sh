@@ -9,6 +9,7 @@
 #
 # Site values come from /etc/slurm-deck-web/gpu-helper.env (LAN_ADDR, LOGIN_ADDR, GPU_HOST,
 # SESSION_PORT_RANGE), written by the installer. Exit 2: the 2225 forward wasn't found.
+# With iptables, rules saved in /etc/iptables/rules.v4 (SD_IPTABLES_RULES) are updated too.
 set -euo pipefail
 
 ENV_FILE="${SD_ENV_FILE:-/etc/slurm-deck-web/gpu-helper.env}"
@@ -38,46 +39,138 @@ detect() {
     fi
 }
 
+# The rule only matches traffic for the LAN address: without that it would catch all
+# HTTP/HTTPS passing through the host, the login node's own outbound HTTPS included.
+# A tagged rule without that match (older runs added those) is deleted and re-added.
 forward_nftables() {
-    local rules fam tbl chain rule handle
+    local rules fam tbl chain rule handle old found="" current=""
     rules="$(nft -a list ruleset)"
-    if [ "$mode" = remove ]; then
-        read -r fam tbl chain handle < <(awk -v tag="$TAG" '$1=="table"{f=$2;t=$3} $1=="chain"{c=$2}
-            index($0, tag) {print f, t, c, $NF; exit}' <<<"$rules") || true
-        [ -n "${handle:-}" ] && act nft delete rule "$fam" "$tbl" "$chain" handle "$handle" || echo "  nothing to remove"
-        return
-    fi
-    if grep -q "comment \"$TAG\"" <<<"$rules"; then echo "  already in place"; return; fi
+    while read -r fam tbl chain handle old; do
+        [ -n "${handle:-}" ] || continue
+        found=1
+        if [ "$mode" != remove ] && [[ "$old" == *"ip daddr $LAN_ADDR "* ]]; then current=1; continue; fi
+        act nft delete rule "$fam" "$tbl" "$chain" handle "$handle"
+    done < <(awk -v tag="comment \"$TAG\"" '$1=="table"{f=$2;t=$3} $1=="chain"{c=$2}
+        index($0, tag) {print f, t, c, $NF, $0}' <<<"$rules")
+    if [ "$mode" = remove ]; then [ -n "$found" ] || echo "  nothing to remove"; return; fi
+    if [ -n "$current" ]; then echo "  already in place"; return; fi
     read -r fam tbl chain rule < <(awk -v port="$SSH_PORT" '$1=="table"{f=$2;t=$3} $1=="chain"{c=$2}
         $0 ~ ("dport " port " ") {sub(/^[ \t]+/, ""); sub(/ # handle [0-9]+$/, ""); print f, t, c, $0; exit}' <<<"$rules")
-    rule="$(sed -E "s/dport $SSH_PORT /dport { 80, 443 } /; s/dnat( ip)? to [^ ]+/dnat\1 to $LOGIN_ADDR/; s/ comment \"[^\"]*\"//" <<<"$rule") comment \"$TAG\""
+    rule="$(sed -E "s/ip daddr [^ ]+ //; s/^/ip daddr $LAN_ADDR /; s/dport $SSH_PORT /dport { 80, 443 } /; s/dnat( ip)? to [^ ]+/dnat\1 to $LOGIN_ADDR/; s/ comment \"[^\"]*\"//" <<<"$rule") comment \"$TAG\""
     read -ra words <<<"$rule"
     act nft add rule "$fam" "$tbl" "$chain" "${words[@]}"
 }
 
+# Each 2225 rule and the 80/443 rule that mirrors it, as "2225 rule<TAB>new rule" lines:
+# the PREROUTING DNAT, the OUTPUT -o lo DNAT when there is one, and the FORWARD accept
+# rules to and from the login node (libvirt's LIBVIRT_FWI rejects new connections into
+# virbr0 without them). No MASQUERADE: the app needs the clients' addresses. The DNATs
+# match the LAN address (-d), whether or not the 2225 ones do.
+iptables_plan() {
+    local nat="$1" filter="$2" dnat dest inner line
+    dnat="$(grep -m1 -E -- "^-A PREROUTING .*--dport $SSH_PORT( |$)" <<<"$nat" || true)"
+    [ -n "$dnat" ] || { echo "No PREROUTING rule for port $SSH_PORT; set up the 443 forward by hand." >&2; exit 2; }
+    dest="$(sed -nE 's/.*--to-destination ([^ :]+).*/\1/p' <<<"$dnat")"
+    inner="$(sed -nE 's/.*--to-destination [^ :]+:([0-9]+).*/\1/p' <<<"$dnat")"
+    inner="${inner:-$SSH_PORT}"
+    local web_dnat="s#^(-A [A-Z]+ (-s [^ ]+ )?)(-d [^ ]+ )?#\1-d $LAN_ADDR/32 #; s/-m tcp --dport $SSH_PORT /-m multiport --dports 80,443 /; s/--dport $SSH_PORT /-m multiport --dports 80,443 /; s/--to-destination [^ ]+/--to-destination $LOGIN_ADDR/; s/ -j / -m comment --comment $TAG -j /"
+    local web_accept="s/-m tcp --(d|s)port $inner /-m multiport --\1ports 80,443 /; s/--(d|s)port $inner /-m multiport --\1ports 80,443 /; s#-([ds]) $dest/32 #-\1 $LOGIN_ADDR/32 #; s/ -j / -m comment --comment $TAG -j /"
+    printf '%s\t%s\n' "$dnat" "$(sed -E "$web_dnat" <<<"$dnat")"
+    line="$(grep -m1 -E -- "^-A OUTPUT .*-o lo .*--dport $SSH_PORT .*-j DNAT" <<<"$nat" || true)"
+    [ -z "$line" ] || printf '%s\t%s\n' "$line" "$(sed -E "$web_dnat" <<<"$line")"
+    while read -r line; do
+        [ -z "$line" ] || printf '%s\t%s\n' "$line" "$(sed -E "$web_accept" <<<"$line")"
+    done < <(grep -E -- "^-A FORWARD (-d $dest/32 .*--dport|-s $dest/32 .*--sport) $inner .*-j ACCEPT" <<<"$filter" || true)
+}
+
+# Delete the tagged rules that aren't in the plan: all of them for --remove, and on
+# --apply the ones an older run added (80/443 DNATs with no -d).
+iptables_drop_tagged() {
+    local nat="$1" filter="$2" plan="$3" table old found=""
+    for table in nat filter; do
+        while read -r old; do
+            [ -n "$old" ] || continue
+            if [ -n "$plan" ] && grep -qxF -- "$old" <<<"$(cut -f2 <<<"$plan")"; then continue; fi
+            found=1
+            read -ra words <<<"${old/#-A/-D}"
+            act iptables -t "$table" "${words[@]}"
+        done < <(if [ "$table" = nat ]; then echo "$nat"; else echo "$filter"; fi | grep -- "--comment $TAG" || true)
+    done
+    [ -n "$found" ] || [ -n "$plan" ] || echo "  nothing to remove"
+}
+
 forward_iptables() {
-    local rule
+    local nat filter plan src new
+    nat="$(iptables -t nat -S)"
+    filter="$(iptables -t filter -S)"
     if [ "$mode" = remove ]; then
-        rule="$(iptables -t nat -S | grep -- "--comment $TAG" | head -1 || true)"
-        [ -n "$rule" ] && { read -ra words <<<"${rule/#-A/-D}"; act iptables -t nat "${words[@]}"; } || echo "  nothing to remove"
+        iptables_drop_tagged "$nat" "$filter" ""
+        persist_iptables ""
         return
     fi
-    if iptables -t nat -S | grep -q -- "--comment $TAG"; then echo "  already in place"; return; fi
-    rule="$(iptables -t nat -S | grep -m1 -- "--dport $SSH_PORT" |
-        sed -E "s/-p tcp -m tcp --dport $SSH_PORT/-p tcp -m multiport --dports 80,443/; s/--dport $SSH_PORT/--dports 80,443/; s/--to-destination [^ ]+/--to-destination $LOGIN_ADDR/; s/ -j / -m comment --comment $TAG -j /")"
-    read -ra words <<<"$rule"
-    act iptables -t nat "${words[@]}"
+    plan="$(iptables_plan "$nat" "$filter")"
+    iptables_drop_tagged "$nat" "$filter" "$plan"
+    while IFS=$'\t' read -r src new; do
+        if grep -qxF -- "$new" <<<"$nat"$'\n'"$filter"; then echo "  in place: $new"; continue; fi
+        if [[ "$new" == "-A FORWARD "* ]]; then
+            # At the top of FORWARD, so before the LIBVIRT_* jumps.
+            read -ra words <<<"-I FORWARD 1 ${new#-A FORWARD }"
+            act iptables -t filter "${words[@]}"
+        else
+            read -ra words <<<"$new"
+            act iptables -t nat "${words[@]}"
+        fi
+    done <<<"$plan"
+    persist_iptables "$plan"
+}
+
+# When the rules are saved for boot (netfilter-persistent), save the new ones too, each
+# right after the 2225 line it mirrors; --remove takes them out again.
+persist_iptables() {
+    local plan="$1" rules="${SD_IPTABLES_RULES:-/etc/iptables/rules.v4}" tmp planfile backup
+    [ -f "$rules" ] || return 0
+    tmp="$(mktemp)" planfile="$(mktemp)"
+    printf '%s\n' "$plan" > "$planfile"
+    if ! awk -v tag="--comment $TAG" -v planfile="$planfile" '
+        BEGIN { while ((getline l < planfile) > 0) { i = index(l, "\t"); if (i) add[substr(l, 1, i - 1)] = add[substr(l, 1, i - 1)] substr(l, i + 1) "\n" } }
+        index($0, tag) { next }
+        { print; if ($0 in add) { printf "%s", add[$0]; delete add[$0] } }
+        END { for (k in add) { print "not in the saved rules: " k > "/dev/stderr"; bad = 1 } exit bad }' "$rules" > "$tmp"; then
+        rm -f "$tmp" "$planfile"
+        echo "Couldn't place the 80/443 rules in $rules; add them there by hand." >&2
+        [ "$mode" = check ] && return 0
+        exit 1
+    fi
+    rm -f "$planfile"
+    if cmp -s "$tmp" "$rules"; then rm -f "$tmp"; echo "  $rules: up to date"; return 0; fi
+    if [ "$mode" = check ]; then
+        echo "  would update $rules:"
+        diff "$rules" "$tmp" | sed -nE 's/^([<>]) /    \1 /p' || true
+        rm -f "$tmp"
+        return 0
+    fi
+    if ! iptables-restore --test < "$tmp"; then
+        rm -f "$tmp"
+        echo "iptables-restore --test rejected the new $rules; it was left as it was." >&2
+        exit 1
+    fi
+    backup="$rules.$(date +%Y%m%d%H%M%S).bak"
+    cp -p "$rules" "$backup"
+    cat "$tmp" > "$rules"   # in place, so its owner and mode stay
+    rm -f "$tmp"
+    echo "  saved in $rules (the old one is $backup)"
 }
 
 # libvirt re-creates its rules from this hook each time the VM starts, so the new lines
-# go beside the 2225 ones, between markers.
+# go beside the 2225 ones, between markers, each matching the LAN address. --apply
+# rewrites the whole block, so lines an older run added without -d are replaced.
 forward_hook() {
     local line port block=""
     sed -i "/# $TAG begin/,/# $TAG end/d" "$HOOK" 2>/dev/null || true
     [ "$mode" = remove ] && return
     line="$(grep -m1 -- "--dport $SSH_PORT" "$HOOK")"
     for port in 80 443; do
-        block+="$(sed -E "s/--dport $SSH_PORT/--dport $port/; s/--to-destination [^ ]+/--to-destination $LOGIN_ADDR:$port/" <<<"$line")"$'\n'
+        block+="$(sed -E "s/ -d [^ ]+//; s/(-[AI] [A-Za-z_]+( [0-9]+)?) /\1 -d $LAN_ADDR /; s/--dport $SSH_PORT/--dport $port/;s/--to-destination [^ ]+/--to-destination $LOGIN_ADDR:$port/" <<<"$line")"$'\n'
     done
     if [ "$mode" = check ]; then printf '  would add to %s after the %s lines:\n%s' "$HOOK" "$SSH_PORT" "$block"; return; fi
     local last

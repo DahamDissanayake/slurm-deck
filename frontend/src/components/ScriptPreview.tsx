@@ -2,7 +2,7 @@
 export function ScriptPreview({ script }: { script: string }) {
   return (
     <pre aria-label="Script preview"
-         className="max-h-96 overflow-auto rounded-sm border border-border bg-bg p-3 font-mono text-xs">
+         className="max-h-96 overflow-auto rounded-md border border-border bg-surface-2 p-3 font-mono text-xs">
       {script || "The script appears here once the inputs are complete."}
     </pre>
   );

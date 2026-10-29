@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 import { formatBytes } from "../../api/files";
 import { type ClusterUsage, DAYS, type DiskUsage, usage } from "../../api/usage";
-import { Panel } from "../../components/Panel";
+import { Card } from "../../components/ui/Card";
 
 type SortKey = "user" | "gpu_hours" | "cpu_hours" | "jobs";
 
@@ -40,7 +40,7 @@ export function UsageAdmin() {
   );
   return (
     <div className="space-y-6">
-      <Panel title="Usage by user">
+      <Card title="Usage by user">
         <label className="mb-4 block text-sm text-text-dim">Period
           <select value={days} onChange={(e) => setDays(Number(e.target.value))}
                   className="ml-2 rounded-sm border border-border bg-surface-2 px-2 py-1 text-text">
@@ -48,7 +48,7 @@ export function UsageAdmin() {
           </select>
         </label>
         {report && (
-          <table className="w-full text-left text-sm">
+          <table className="w-full text-left text-sm [&_th]:py-2 [&_th]:font-medium [&_td]:py-2">
             <thead className="text-text-dim">
               <tr>{head("user", "User")}{head("gpu_hours", "GPU-hours")}
                 {head("cpu_hours", "CPU-hours")}{head("jobs", "Jobs")}</tr>
@@ -68,10 +68,10 @@ export function UsageAdmin() {
             </tbody>
           </table>
         )}
-      </Panel>
-      <Panel title="Disk use by user">
+      </Card>
+      <Card title="Disk use by user">
         {!disk ? <p className="text-text-dim">Measuring… this can take a minute.</p> : (
-          <table className="w-full text-left text-sm">
+          <table className="w-full text-left text-sm [&_th]:py-2 [&_th]:font-medium [&_td]:py-2">
             <thead className="text-text-dim">
               <tr><th className="py-1 font-normal">User</th><th className="font-normal">Files</th>
                 <th className="font-normal">Job outputs</th><th className="font-normal">Total</th></tr>
@@ -86,7 +86,7 @@ export function UsageAdmin() {
             </tbody>
           </table>
         )}
-      </Panel>
+      </Card>
     </div>
   );
 }

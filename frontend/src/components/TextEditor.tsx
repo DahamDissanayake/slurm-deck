@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 
 import { ApiError } from "../api/client";
 import { files } from "../api/files";
-import { primary, secondary } from "../pages/NewJob/StepInputs";
+import { Button } from "./ui/Button";
+import { Notice } from "./ui/Notice";
 
 const LEAVE = "You have unsaved changes. Leave without saving?";
 
@@ -48,17 +49,17 @@ export function TextEditor({ path, onClose }: { path: string; onClose: () => voi
 
   return (
     <div>
-      <p className="mb-2 font-mono text-sm">{path}{dirty && " •"}</p>
-      {message && <p role="status" className="mb-2 text-sm text-text-dim">{message}</p>}
+      <p className="mb-2 font-mono text-md text-text">{path}{dirty && " •"}</p>
+      {message && <Notice tone="info" className="mb-2 py-2">{message}</Notice>}
       {saved !== null && (
         <textarea aria-label="Editor" value={text} spellCheck={false}
                   onChange={(e) => setText(e.target.value)}
-                  className="h-96 w-full rounded-sm border border-border bg-surface-2 p-2 font-mono text-sm" />
+                  className="h-96 w-full rounded-md border border-border bg-bg p-3 font-mono text-sm text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent" />
       )}
-      <div className="mt-2 flex gap-2">
-        <button type="button" className={primary} disabled={!dirty} onClick={save}>Save</button>
-        <button type="button" className={secondary}
-                onClick={() => { if (!dirty || window.confirm(LEAVE)) onClose(); }}>Close</button>
+      <div className="mt-3 flex gap-2">
+        <Button size="sm" pill disabled={!dirty} onClick={save}>Save</Button>
+        <Button variant="secondary" size="sm" pill
+                onClick={() => { if (!dirty || window.confirm(LEAVE)) onClose(); }}>Close</Button>
       </div>
     </div>
   );

@@ -3,7 +3,8 @@ import { useCallback, useEffect, useState } from "react";
 import { ApiError } from "../../api/client";
 import { cluster, type NodeJob, type Pods, type Qos, type QosField, type Services } from "../../api/cluster";
 import { usePolled } from "../../api/poll";
-import { Panel } from "../../components/Panel";
+import { Card } from "../../components/ui/Card";
+import { StatusBadge } from "../../components/ui/StatusBadge";
 import { smallButton } from "./AdminLayout";
 
 const say = (e: unknown, fallback: string) =>
@@ -53,9 +54,9 @@ function QosPanel() {
   const load = useCallback(() => { cluster.qos().then(setRows, (e) => setError(say(e, "Couldn't load limits."))); }, []);
   useEffect(load, [load]);
   return (
-    <Panel title="Limits (QOS)">
+    <Card title="Limits (QOS)">
       {error && <p role="alert" className="mb-2 text-danger">{error}</p>}
-      <table className="w-full text-left text-sm">
+      <table className="w-full text-left text-sm [&_th]:py-2 [&_th]:font-medium [&_td]:py-2">
         <thead className="text-text-dim">
           <tr><th>Name</th><th>Max hours</th><th>Pods per user</th><th>GPUs per user</th>
             <th>Priority</th><th /></tr>
@@ -66,7 +67,7 @@ function QosPanel() {
           ))}
         </tbody>
       </table>
-    </Panel>
+    </Card>
   );
 }
 
@@ -93,7 +94,7 @@ function NodePanel() {
   }
 
   return (
-    <Panel title="Node">
+    <Card title="Node">
       <p className="mb-2 text-sm text-text-dim">{jobs.length} job(s) on the node.</p>
       <div className="flex flex-wrap items-end gap-2 text-sm">
         <label>Reason
@@ -107,7 +108,7 @@ function NodePanel() {
                 onClick={() => run(cluster.resume, "The node is back in service.")}>Resume</button>
       </div>
       {note && <p role="status" className="mt-2 text-sm">{note}</p>}
-    </Panel>
+    </Card>
   );
 }
 
@@ -130,7 +131,7 @@ function PodsPanel() {
 
   const fit = pods?.fits.find((f) => f.n === n);
   return (
-    <Panel title="Pods">
+    <Card title="Pods">
       <div className="mb-3 flex flex-wrap gap-1" aria-label="Pod grid">
         {(pods?.pods ?? []).map((p) => (
           <span key={p.pod} title={p.job_id ? `Job ${p.job_id} (${p.user})` : "Free"}
@@ -147,7 +148,7 @@ function PodsPanel() {
         {fit && !fit.ok && <span className="text-warning">{fit.message}</span>}
       </div>
       {note && <pre role="status" className="mt-2 whitespace-pre-wrap font-mono text-xs">{note}</pre>}
-    </Panel>
+    </Card>
   );
 }
 
@@ -159,7 +160,7 @@ export function ServiceUnits() {
       <h3 className="mb-1 text-sm text-text-dim">{title}</h3>
       <ul className="text-sm">
         {Object.entries(units).map(([u, s]) => (
-          <li key={u}><span className={s === "active" ? "text-ok" : "text-danger"}>●</span> {u}: {s}</li>
+          <li key={u} className="flex items-center gap-2 py-0.5"><span className="sr-only">{u}: {s}</span><span aria-hidden="true" className="font-mono">{u}</span><span aria-hidden="true"><StatusBadge state={s} /></span></li>
         ))}
       </ul>
     </div>
@@ -182,7 +183,7 @@ export function ServiceUnits() {
 export function Cluster() {
   return (
     <div className="space-y-6">
-      <QosPanel /><NodePanel /><PodsPanel /><Panel title="Services"><ServiceUnits /></Panel>
+      <QosPanel /><NodePanel /><PodsPanel /><Card title="Services"><ServiceUnits /></Card>
     </div>
   );
 }

@@ -29,15 +29,19 @@ HOOK = ('if [ "$1" = "guest" ]; then\n  iptables -t nat -A PREROUTING -p tcp --d
         '-j DNAT --to-destination 192.168.122.10:22\nfi\n')
 
 
-def _setup(tmp_path, *, nft="", ipt="", hook=None):
+def _setup(tmp_path, *, nft="", ipt="", ipt_filter="", hook=None):
     """A bin dir of fakes that log `name args` and print the given rulesets."""
     bindir, log = tmp_path / "bin", tmp_path / "calls.log"
     bindir.mkdir()
     (tmp_path / "nft.out").write_text(nft)
     (tmp_path / "ipt.out").write_text(ipt)
+    (tmp_path / "ipt-filter.out").write_text(ipt_filter)
     drain = "[ -t 0 ] || cat >/dev/null"   # a script may pipe rules in
     fakes = {"nft": f'case "$*" in *"list ruleset"*) cat "$T/nft.out";; esac; {drain}',
-             "iptables": 'case "$*" in *" -S"*) cat "$T/ipt.out";; *" -C "*) exit 1;; esac'}
+             "iptables": 'case "$*" in *"-t filter -S"*) cat "$T/ipt-filter.out";; '
+                         '*" -S"*) cat "$T/ipt.out";; *" -C "*) exit 1;; esac',
+             "iptables-restore": 'cat > "$T/restored"; '
+                                 'exit "$(cat "$T/restore.code" 2>/dev/null || echo 0)"'}
     for name, body in fakes.items():
         f = bindir / name
         f.write_text(f'#!/bin/bash\necho "{name} $*" >> "{log}"\n{body}\n')
@@ -51,7 +55,8 @@ def _setup(tmp_path, *, nft="", ipt="", hook=None):
 def _run(tmp_path, bindir, mode, **env):
     full = {"PATH": f"{bindir}:/usr/bin:/bin", "T": str(tmp_path), "HOME": str(tmp_path),
             "SD_ENV_FILE": str(tmp_path / "gpu-helper.env"),
-            "LIBVIRT_HOOK": str(tmp_path / "hook"), **env}
+            "LIBVIRT_HOOK": str(tmp_path / "hook"),
+            "SD_IPTABLES_RULES": str(tmp_path / "rules.v4"), **env}
     return subprocess.run(["bash", str(SCRIPT), mode], capture_output=True, text=True, env=full)
 
 
@@ -70,13 +75,35 @@ def test_check_detects_nftables_forward(tmp_path):
     assert "nft add" not in _calls(tmp_path)   # --check changes nothing
 
 
+def test_nftables_rule_matches_the_lan_address_when_the_2225_rule_does_not(tmp_path):
+    bindir = _setup(tmp_path, nft=NFT_RULESET.replace("ip daddr 10.35.4.100 ", ""))
+    r = _run(tmp_path, bindir, "--apply")
+    assert r.returncode == 0, r.stderr
+    adds = [c for c in _calls(tmp_path).splitlines() if c.startswith("nft add rule")]
+    assert adds == ["nft add rule ip nat prerouting ip daddr 10.35.4.100 tcp dport { 80, 443 } "
+                    'dnat to 192.168.122.20 comment "sd-web-forward"']
+
+
+def test_nftables_apply_replaces_an_old_rule_without_a_destination(tmp_path):
+    old = NFT_RULESET.replace("}\n}\n", '\t\ttcp dport { 80, 443 } dnat to 192.168.122.20 '
+                              'comment "sd-web-forward" # handle 9\n\t}\n}\n')
+    bindir = _setup(tmp_path, nft=old)
+    r = _run(tmp_path, bindir, "--apply")
+    assert r.returncode == 0, r.stderr
+    calls = _calls(tmp_path)
+    assert "nft delete rule ip nat prerouting handle 9" in calls
+    assert calls.index("handle 9") < calls.index("nft add rule ip nat prerouting ip daddr "
+                                                 "10.35.4.100 tcp dport { 80, 443 }")
+
+
 def test_apply_adds_the_rule_once_and_remove_deletes_it(tmp_path):
     bindir = _setup(tmp_path, nft=NFT_RULESET)
     assert _run(tmp_path, bindir, "--apply").returncode == 0
     assert "nft add rule ip nat prerouting" in _calls(tmp_path)
     assert "sd-web-forward" in _calls(tmp_path)
-    tagged = NFT_RULESET.replace("}\n}\n", '\t\ttcp dport { 80, 443 } dnat to 192.168.122.20 '
-                                 'comment "sd-web-forward" # handle 9\n\t}\n}\n')
+    tagged = NFT_RULESET.replace("}\n}\n", '\t\tip daddr 10.35.4.100 tcp dport { 80, 443 } '
+                                 'dnat to 192.168.122.20 comment "sd-web-forward" # handle 9\n'
+                                 '\t}\n}\n')
     (tmp_path / "nft.out").write_text(tagged)
     (tmp_path / "calls.log").unlink()
     assert "already" in _run(tmp_path, bindir, "--apply").stdout
@@ -91,7 +118,151 @@ def test_check_detects_an_iptables_forward(tmp_path):
     assert r.returncode == 0 and "mechanism: iptables" in r.stdout
     plan = r.stdout.replace("\\", "")   # the plan shows each argument shell-quoted
     assert "multiport --dports 80,443" in plan and "--to-destination 192.168.122.20" in plan
+    assert "iptables -t nat -A PREROUTING -d 10.35.4.100/32 -p tcp -m multiport" in plan
+    assert plan.count("-d 10.35.4.100/32") == 1   # the 2225 rule's own match isn't doubled
     assert "iptables -t nat -A" not in _calls(tmp_path)
+
+
+# The live GPU host (SLURM-50): libvirt's LIBVIRT_FWI rejects new connections into virbr0,
+# so the 2225 forward also has FORWARD accept rules, an OUTPUT -o lo DNAT, and is saved in
+# /etc/iptables/rules.v4.
+SSH_PRE = "-A PREROUTING -p tcp -m tcp --dport 2225 -j DNAT --to-destination 192.168.122.10:22"
+SSH_OUT = "-A OUTPUT -o lo -p tcp -m tcp --dport 2225 -j DNAT --to-destination 192.168.122.10:22"
+SSH_FWD = ("-A FORWARD -d 192.168.122.10/32 -o virbr0 -p tcp -m tcp --dport 22 "
+           "-m conntrack --ctstate NEW,RELATED,ESTABLISHED -j ACCEPT")
+SSH_BACK = ("-A FORWARD -s 192.168.122.10/32 -i virbr0 -p tcp -m tcp --sport 22 "
+            "-m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT")
+LIBVIRT_JUMPS = ["-A FORWARD -j LIBVIRT_FWX", "-A FORWARD -j LIBVIRT_FWI",
+                 "-A FORWARD -j LIBVIRT_FWO"]
+POSTROUTING = "-A POSTROUTING -s 192.168.122.0/24 -j LIBVIRT_PRT"
+WEB = {
+    "fwd": "-A FORWARD -d 192.168.122.20/32 -o virbr0 -p tcp -m multiport --dports 80,443 "
+           "-m conntrack --ctstate NEW,RELATED,ESTABLISHED -m comment --comment sd-web-forward "
+           "-j ACCEPT",
+    "back": "-A FORWARD -s 192.168.122.20/32 -i virbr0 -p tcp -m multiport --sports 80,443 "
+            "-m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment sd-web-forward "
+            "-j ACCEPT",
+    "pre": "-A PREROUTING -d 10.35.4.100/32 -p tcp -m multiport --dports 80,443 "
+           "-m comment --comment sd-web-forward -j DNAT --to-destination 192.168.122.20",
+    "out": "-A OUTPUT -d 10.35.4.100/32 -o lo -p tcp -m multiport --dports 80,443 "
+           "-m comment --comment sd-web-forward -j DNAT --to-destination 192.168.122.20",
+}
+# What older runs added: with no destination match they caught all HTTP/HTTPS passing
+# through the GPU host, so the login node lost outbound HTTPS.
+BROAD = {k: WEB[k].replace(" -d 10.35.4.100/32", "") for k in ("pre", "out")}
+
+
+def _assert_dnats_have_a_destination(text):
+    """Every 80/443 DNAT the script runs or writes matches the LAN address."""
+    dnats = [line for line in text.replace("\\", "").splitlines()
+             if "DNAT" in line and "2225" not in line]
+    assert dnats
+    for line in dnats:
+        assert " -d 10.35.4.100/32 " in line, line
+
+
+def _lines(*rules):
+    return "".join(f"{r}\n" for r in rules)
+
+
+def _live_nat(*, output=True, web=False, dnat=WEB):
+    rules = ["-P PREROUTING ACCEPT", "-P OUTPUT ACCEPT", SSH_PRE]
+    rules += [dnat["pre"]] if web else []
+    rules += [SSH_OUT] if output else []
+    rules += [dnat["out"]] if web and output else []
+    return _lines(*rules, POSTROUTING)
+
+
+def _live_filter(*, web=False):
+    return _lines("-P FORWARD ACCEPT", *([WEB["fwd"], WEB["back"]] if web else []),
+                  SSH_FWD, SSH_BACK, *LIBVIRT_JUMPS)
+
+
+def _rules_v4(*, web=False, dnat=WEB):
+    """/etc/iptables/rules.v4 as iptables-save writes it; with web, the 80/443 lines sit
+    right after the 2225 lines they mirror."""
+    nat = [SSH_PRE, *([dnat["pre"]] if web else []), SSH_OUT, *([dnat["out"]] if web else []),
+           POSTROUTING]
+    flt = [SSH_FWD, *([WEB["fwd"]] if web else []), SSH_BACK, *([WEB["back"]] if web else []),
+           *LIBVIRT_JUMPS]
+    return _lines("*nat", ":PREROUTING ACCEPT [0:0]", ":OUTPUT ACCEPT [0:0]", *nat, "COMMIT",
+                  "*filter", ":FORWARD ACCEPT [0:0]", *flt, "COMMIT")
+
+
+def test_iptables_apply_mirrors_the_2225_forward_accept_and_output_rules(tmp_path):
+    bindir = _setup(tmp_path, ipt=_live_nat(), ipt_filter=_live_filter())
+    r = _run(tmp_path, bindir, "--apply")
+    assert r.returncode == 0, r.stderr
+    calls = _calls(tmp_path)
+    assert "iptables -t nat " + WEB["pre"] in calls
+    assert "iptables -t nat " + WEB["out"] in calls
+    # Inserted at the top of FORWARD, so before the LIBVIRT_* jumps.
+    for key in ("fwd", "back"):
+        assert "iptables -t filter -I FORWARD 1 " + WEB[key][len("-A FORWARD "):] in calls
+    assert "MASQUERADE" not in calls   # the app needs the clients' addresses
+    _assert_dnats_have_a_destination(calls)
+
+
+def test_iptables_output_dnat_only_when_2225_has_one(tmp_path):
+    bindir = _setup(tmp_path, ipt=_live_nat(output=False), ipt_filter=_live_filter())
+    assert _run(tmp_path, bindir, "--apply").returncode == 0
+    assert "-A OUTPUT" not in _calls(tmp_path)
+    assert WEB["pre"] in _calls(tmp_path)
+
+
+def test_iptables_apply_saves_the_rules_next_to_the_2225_lines(tmp_path):
+    bindir = _setup(tmp_path, ipt=_live_nat(), ipt_filter=_live_filter())
+    (tmp_path / "rules.v4").write_text(_rules_v4())
+    r = _run(tmp_path, bindir, "--apply")
+    assert r.returncode == 0, r.stderr
+    assert (tmp_path / "rules.v4").read_text() == _rules_v4(web=True)
+    assert "iptables-restore --test" in _calls(tmp_path)
+    assert (tmp_path / "restored").read_text() == _rules_v4(web=True)
+    assert [p.read_text() for p in tmp_path.glob("rules.v4.*.bak")] == [_rules_v4()]
+    _assert_dnats_have_a_destination((tmp_path / "rules.v4").read_text())
+
+
+def test_iptables_apply_replaces_the_old_broad_dnats_live_and_saved(tmp_path):
+    bindir = _setup(tmp_path, ipt=_live_nat(web=True, dnat=BROAD),
+                    ipt_filter=_live_filter(web=True))
+    (tmp_path / "rules.v4").write_text(_rules_v4(web=True, dnat=BROAD))
+    r = _run(tmp_path, bindir, "--apply")
+    assert r.returncode == 0, r.stderr
+    calls = _calls(tmp_path)
+    for key in ("pre", "out"):
+        assert "iptables -t nat -D" + BROAD[key][2:] in calls, key
+        assert "iptables -t nat " + WEB[key] in calls, key
+        assert calls.index("-D" + BROAD[key][2:]) < calls.index(WEB[key])
+    assert "-t filter -D" not in calls and "-t filter -I" not in calls   # still in place
+    assert (tmp_path / "rules.v4").read_text() == _rules_v4(web=True)
+
+
+def test_iptables_rules_file_left_alone_when_the_restore_test_fails(tmp_path):
+    bindir = _setup(tmp_path, ipt=_live_nat(), ipt_filter=_live_filter())
+    (tmp_path / "rules.v4").write_text(_rules_v4())
+    (tmp_path / "restore.code").write_text("1")
+    r = _run(tmp_path, bindir, "--apply")
+    assert r.returncode != 0
+    assert (tmp_path / "rules.v4").read_text() == _rules_v4()
+
+
+def test_iptables_check_lists_the_rules_in_place_and_remove_deletes_them_all(tmp_path):
+    bindir = _setup(tmp_path, ipt=_live_nat(web=True), ipt_filter=_live_filter(web=True))
+    (tmp_path / "rules.v4").write_text(_rules_v4(web=True))
+    r = _run(tmp_path, bindir, "--check")
+    assert r.returncode == 0, r.stderr
+    for rule in WEB.values():
+        assert rule in r.stdout
+    changes = [c for c in _calls(tmp_path).splitlines()
+               if c.startswith("iptables") and not c.endswith(" -S")]
+    assert changes == []   # --check changes nothing
+    assert (tmp_path / "rules.v4").read_text() == _rules_v4(web=True)
+    (tmp_path / "calls.log").unlink()
+    assert _run(tmp_path, bindir, "--remove").returncode == 0
+    calls = _calls(tmp_path)
+    for key, table in (("pre", "nat"), ("out", "nat"), ("fwd", "filter"), ("back", "filter")):
+        assert f"iptables -t {table} -D" + WEB[key][2:] in calls, key
+    assert (tmp_path / "rules.v4").read_text() == _rules_v4()
 
 
 def test_check_detects_a_libvirt_hook_and_apply_adds_lines_next_to_the_2225_rule(tmp_path):
@@ -99,10 +270,29 @@ def test_check_detects_a_libvirt_hook_and_apply_adds_lines_next_to_the_2225_rule
     assert "mechanism: libvirt-hook" in _run(tmp_path, bindir, "--check").stdout
     assert _run(tmp_path, bindir, "--apply").returncode == 0
     text = (tmp_path / "hook").read_text()
-    assert "--dport 443 -j DNAT --to-destination 192.168.122.20:443" in text
+    assert "-A PREROUTING -d 10.35.4.100 -p tcp --dport 443 -j DNAT " \
+           "--to-destination 192.168.122.20:443" in text
+    assert "-A PREROUTING -d 10.35.4.100 -p tcp --dport 80 " in text
+    for line in text.splitlines():
+        if "DNAT" in line and "2225" not in line:
+            assert " -d 10.35.4.100 " in line, line
     assert text.index("--dport 2225") < text.index("--dport 443") < text.index("\nfi\n")
     assert _run(tmp_path, bindir, "--remove").returncode == 0
     assert (tmp_path / "hook").read_text() == HOOK
+
+
+def test_libvirt_hook_apply_replaces_an_old_block_without_a_destination(tmp_path):
+    old = HOOK.replace("\nfi\n", "\n  # sd-web-forward begin\n"
+                       "  iptables -t nat -A PREROUTING -p tcp --dport 80 -j DNAT "
+                       "--to-destination 192.168.122.20:80\n"
+                       "  iptables -t nat -A PREROUTING -p tcp --dport 443 -j DNAT "
+                       "--to-destination 192.168.122.20:443\n  # sd-web-forward end\nfi\n")
+    bindir = _setup(tmp_path, hook=old)
+    assert _run(tmp_path, bindir, "--apply").returncode == 0
+    text = (tmp_path / "hook").read_text()
+    assert text.count("sd-web-forward begin") == 1
+    assert "-A PREROUTING -p tcp --dport 80 " not in text
+    assert "-A PREROUTING -d 10.35.4.100 -p tcp --dport 80 " in text
 
 
 def test_no_detectable_forward_exits_2_with_the_plain_message(tmp_path):

@@ -122,6 +122,29 @@ def test_submit_rejects_identity_directives_and_bad_folders(jobs, payload):
     assert "sbatch" not in jobs.calls()
 
 
+def _mail(address):
+    return GOOD.replace("python3", f"#SBATCH --mail-user={address}\npython3")
+
+
+def test_submit_accepts_mail_user_equal_to_the_account_email(jobs):
+    r = jobs.call("job.submit", {"folder_name": "mail_1", "script": _mail("Amasha@Example.org")})
+    assert r["job_id"] == "512" and ("amasha", "sbatch") in jobs.ran
+
+
+def test_submit_refuses_mail_user_for_another_address(jobs):
+    e = _err(jobs, "job.submit", {"folder_name": "mail_2", "script": _mail("eve@example.org")})
+    assert (e.status, e.code) == (422, "bad_script")
+    assert "registered address (amasha@example.org)" in e.message
+    assert "sbatch" not in jobs.calls()
+
+
+def test_submit_refuses_mail_user_when_the_account_has_no_email(jobs):
+    jobs.store.emails["amasha"] = None
+    e = _err(jobs, "job.submit", {"folder_name": "mail_3", "script": _mail("amasha@example.org")})
+    assert (e.status, e.code) == (422, "bad_script") and "cannot be verified" in e.message
+    assert "sbatch" not in jobs.calls()
+
+
 def test_extend_over_cap_refused(jobs):
     job(jobs, "42", limit="22:00:00")
     e = _err(jobs, "job.extend", {"job_id": "42", "hours": 4})

@@ -2,17 +2,25 @@ import { describe, expect, it } from "vitest";
 
 import css from "./tokens.css?raw";
 
-// Spec §6: [token, dark, light]
+// Tokens v2 (modern UI redesign spec): [token, dark, light]
 const SPEC: [string, string, string][] = [
-  ["--bg", "#0A0E13", "#F3F6F8"],
-  ["--surface", "#12181F", "#FFFFFF"],
-  ["--surface-2", "#1A222C", "#EEF2F5"],
-  ["--border", "#26313D", "#D7DEE5"],
-  ["--text", "#E7ECF1", "#16202B"],
-  ["--text-dim", "#7E8CA0", "#5B6B7C"],
-  ["--accent", "#3FD9E8", "#0E93A3"],
+  ["--bg", "#0E131A", "#F4F6F9"],
+  ["--surface", "#151B23", "#FFFFFF"],
+  ["--surface-2", "#1C242E", "#EDF0F5"],
+  ["--border", "#29333F", "#DAE0E8"],
+  ["--text", "#E6EBF1", "#17202B"],
+  ["--text-dim", "#8C99AB", "#5A6779"],
+  ["--accent", "#8B9CFF", "#4152D9"],
 ];
-const STATUS = ["--danger", "--warning", "--ok"];
+const STATUS = ["--danger", "--warning", "--ok", "--info"];
+const THEMED = ["--accent-soft", "--accent-fg", "--ok-soft", "--warning-soft", "--danger-soft",
+  "--info-soft", "--neutral-soft", "--border-strong", "--shadow-sm", "--shadow-md", "--shadow-lg"];
+// Theme-independent scales: [token, value]
+const SCALES: [string, string][] = [
+  ["--radius-sm", "6px"], ["--radius-md", "10px"], ["--radius-lg", "14px"], ["--radius-full", "9999px"],
+  ["--text-xs", "12px"], ["--text-sm", "13px"], ["--text-md", "14px"], ["--text-base", "16px"],
+  ["--text-lg", "20px"], ["--text-xl", "24px"], ["--text-2xl", "30px"], ["--space", "4px"],
+];
 
 function block(selector: string): string {
   const start = css.indexOf(selector + " {");
@@ -39,6 +47,20 @@ describe("tokens.css", () => {
         expect(value(b, t)).not.toBe(value(b, "--accent"));
       }
     }
+  });
+
+  it("defines every themed token in all four blocks", () => {
+    for (const b of [...dark, ...light]) for (const t of THEMED) expect(value(b, t), t).toBeTruthy();
+  });
+
+  it.each(SCALES)("%s is %s", (token, v) => expect(value(block(":root"), token)).toBe(v));
+
+  it("zeroes motion and stops animations under prefers-reduced-motion", () => {
+    const start = css.indexOf("@media (prefers-reduced-motion: reduce)");
+    expect(start).toBeGreaterThanOrEqual(0);
+    const rm = css.slice(start);
+    for (const t of ["--duration-fast", "--duration-base", "--duration-slow"]) expect(value(rm, t)).toBe("0ms");
+    expect(rm).toMatch(/animation: none !important/);
   });
 
   it("puts light under prefers-color-scheme and loads nothing external", () => {

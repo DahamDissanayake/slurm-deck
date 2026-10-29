@@ -13,6 +13,8 @@ const post = (url: string, json: unknown) => apiFetch(url, { method: "POST", jso
 
 export const join = (dir: string, name: string) => `${dir.replace(/\/+$/, "")}/${name}`;
 export const parent = (path: string) => path.replace(/\/[^/]+\/?$/, "") || "/";
+/** The in-app address of a folder, e.g. /shared/users/a b → /files/shared/users/a%20b. */
+export const filesHref = (path: string) => `/files${path.split("/").map(encodeURIComponent).join("/")}`;
 export const IMAGE = /\.(png|jpe?g|gif|webp|svg)$/i;
 export const ARCHIVE = /\.(zip|tar|tar\.gz|tgz|tar\.bz2|tar\.xz)$/i;
 

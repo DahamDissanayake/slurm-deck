@@ -2,16 +2,19 @@ import { type FormEvent, useState } from "react";
 
 import { forgotPassword } from "../api/auth";
 import { Link } from "../app/navigation";
-import { Alert, button, Field, PublicPage } from "./PublicPage";
+import { Alert, Field, PublicPage, SubmitButton } from "./PublicPage";
 
 /** Ask for a reset link. The reply is the same whether or not the account exists. */
 export function ForgotPassword() {
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
+    setBusy(true);
     await forgotPassword(email).catch(() => {});
+    setBusy(false);
     setSent(true);
   }
 
@@ -23,7 +26,7 @@ export function ForgotPassword() {
         <form onSubmit={submit}>
           <Field label="Email" type="email" required value={email}
                  onChange={(e) => setEmail(e.target.value)} />
-          <button type="submit" className={button}>Send reset link</button>
+          <SubmitButton loading={busy}>Send reset link</SubmitButton>
         </form>
       )}
       <Link href="/sign-in" className="mt-4 block text-sm text-accent">Back to sign-in</Link>

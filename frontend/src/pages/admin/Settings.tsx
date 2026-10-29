@@ -2,8 +2,11 @@ import { useEffect, useState } from "react";
 
 import { type SettingsReply, type SettingValues, adminOps } from "../../api/adminOps";
 import { ApiError } from "../../api/client";
-import { Panel } from "../../components/Panel";
-import { inputClass, primaryButton } from "./AdminLayout";
+import { Card } from "../../components/ui/Card";
+import { Button } from "../../components/ui/Button";
+import { ErrorState } from "../../components/ui/ErrorState";
+import { Skeleton } from "../../components/ui/Skeleton";
+import { inputClass } from "./AdminLayout";
 
 type Key = keyof SettingValues;
 type Kind = "time" | "whole" | "text";
@@ -30,19 +33,38 @@ function problem([key, , kind, low, high]: (typeof FIELDS)[number], v: string, p
   return v !== "" && Number.isInteger(n) && n >= low && n <= top ? "" : `Use a whole number from ${low} to ${top}.`;
 }
 
+const TOGGLES: [Key, string][] = [["mail_enabled", "Send email"], ["terminal_jobs_enabled", "Allow terminal sessions"]];
+const GROUPS: [string, Key[]][] = [
+  ["Jobs", ["default_time_limit", "extension_cap_hours", "submit_rate_per_hour", "terminal_jobs_enabled"]],
+  ["Email and alerts", ["mail_enabled", "disk_alert_percent"]],
+  ["Site", ["cluster_location", "maintenance_banner"]],
+];
+
 const show = (v: unknown) => (v == null ? "" : String(v));
 /** The admin settings form: validated as you type, saved only when every value is good. */
 export function Settings() {
   const [reply, setReply] = useState<SettingsReply | null>(null);
   const [form, setForm] = useState<Record<string, string | boolean>>({});
   const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
 
   function load(r: SettingsReply) {
     setReply(r);
     setForm(Object.fromEntries(Object.entries(r.settings).map(([k, v]) => [k, typeof v === "boolean" ? v : show(v)])));
   }
-  useEffect(() => { adminOps.settings().then(load, () => setNote("Couldn't load the settings.")); }, []);
-  if (!reply) return <Panel title="Settings"><p className="text-text-dim">{note || "Loading…"}</p></Panel>;
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    setNote("");
+    adminOps.settings().then(load, () => setNote("Couldn't load the settings."));
+  }, [attempt]);
+  if (!reply) {
+    return (
+      <Card title="Settings">
+        {note ? <ErrorState title={note} onRetry={() => setAttempt((n) => n + 1)} />
+          : <Skeleton variant="row" count={4} label="Loading settings" />}
+      </Card>
+    );
+  }
 
   const errors = Object.fromEntries(FIELDS.map((f) => [f[0], problem(f, String(form[f[0]] ?? ""), reply.partition_max_s)]));
   const invalid = Object.values(errors).some(Boolean);
@@ -53,35 +75,43 @@ export function Settings() {
       const old = reply!.settings[k as Key];
       if (v !== (typeof old === "boolean" ? old : show(old))) changes[k] = typeof old === "number" ? Number(v) : v;
     }
+    setSaving(true);
     try {
       load(await adminOps.saveSettings(changes));
       setNote("Saved.");
     } catch (e) {
       setNote(e instanceof ApiError && e.message ? e.message : "That didn't save.");
+    } finally {
+      setSaving(false);
     }
   }
 
   return (
-    <Panel title="Settings">
-      <div className="grid max-w-xl gap-4 text-sm">
-        {FIELDS.map((f) => (
-          <label key={f[0]}>{f[1]}
-            <input className={inputClass} value={String(form[f[0]] ?? "")}
-                   onChange={(e) => setForm({ ...form, [f[0]]: e.target.value })} />
-            {errors[f[0]] && <span role="alert" className="text-danger">{errors[f[0]]}</span>}
-          </label>
-        ))}
-        {(["mail_enabled", "terminal_jobs_enabled"] as const).map((k) => (
-          <label key={k}>
-            <input type="checkbox" checked={form[k] === true} onChange={(e) => setForm({ ...form, [k]: e.target.checked })} />
-            {" "}{k === "mail_enabled" ? "Send email" : "Allow terminal sessions"}
-          </label>
+    <Card title="Settings">
+      <div className="grid max-w-xl gap-6 text-sm">
+        {GROUPS.map(([legend, keys]) => (
+          <fieldset key={legend} className="grid gap-4 rounded-lg border border-border p-4">
+            <legend className="px-2 text-sm font-semibold text-text">{legend}</legend>
+            {FIELDS.filter((f) => keys.includes(f[0])).map((f) => (
+              <label key={f[0]} className="text-text-dim">{f[1]}
+                <input className={`${inputClass} mt-1`} value={String(form[f[0]] ?? "")}
+                       onChange={(e) => setForm({ ...form, [f[0]]: e.target.value })} />
+                {errors[f[0]] && <span role="alert" className="mt-1 block text-danger">{errors[f[0]]}</span>}
+              </label>
+            ))}
+            {TOGGLES.filter(([k]) => keys.includes(k)).map(([k, text]) => (
+              <label key={k} className="flex items-center gap-2 text-text">
+                <input type="checkbox" checked={form[k] === true} onChange={(e) => setForm({ ...form, [k]: e.target.checked })} />
+                {text}
+              </label>
+            ))}
+          </fieldset>
         ))}
         <div className="flex items-center gap-3">
-          <button type="button" className={primaryButton} disabled={invalid} onClick={save}>Save</button>
-          {note && <span role="status">{note}</span>}
+          <Button disabled={invalid} loading={saving} onClick={save}>Save</Button>
+          {note && <span role="status" className="text-text-dim">{note}</span>}
         </div>
       </div>
-    </Panel>
+    </Card>
   );
 }

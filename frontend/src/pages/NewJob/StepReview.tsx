@@ -6,7 +6,9 @@ import { navigate } from "../../app/navigation";
 import { PodStepper } from "../../components/PodStepper";
 import { ScriptPreview } from "../../components/ScriptPreview";
 import { full, input } from "../../components/controls";
-import { field, primary, secondary } from "./StepInputs";
+import { Button } from "../../components/ui/Button";
+import { Card } from "../../components/ui/Card";
+import { field } from "./StepInputs";
 
 const gb = (mb: number) => (mb / 1024).toFixed(1);
 
@@ -70,6 +72,15 @@ export function StepReview({ spec, qos, onChange, onBack }: {
 
   return (
     <div className="space-y-5">
+      <Card title="Summary" className="bg-surface-2 shadow-none">
+        <dl aria-label="Summary" className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1 text-sm">
+          <dt className="text-text-dim">Type</dt><dd className="capitalize">{spec.intent}</dd>
+          <dt className="text-text-dim">Pods</dt><dd>{spec.gpu_shards}</dd>
+          <dt className="text-text-dim">Resources</dt><dd>{spec.cpus} CPUs · {spec.mem_gb} GB RAM</dd>
+          <dt className="text-text-dim">Time limit</dt><dd className="font-mono">{spec.time_limit}</dd>
+          {spec.script && <><dt className="text-text-dim">Script</dt><dd className="break-all font-mono">{spec.script}</dd></>}
+        </dl>
+      </Card>
       <div>
         <h3 className="mb-2 text-sm text-text-dim">Pods</h3>
         <PodStepper value={spec.gpu_shards} max={max} free={free} total={total} onChange={setPods} />
@@ -110,23 +121,22 @@ export function StepReview({ spec, qos, onChange, onBack }: {
       <div className="flex gap-2">
         <input aria-label="Template name" placeholder="Template name" value={templateName}
                onChange={(e) => setTemplateName(e.target.value)} className={`${input} ${full}`} />
-        <button type="button" className={secondary} disabled={!templateName.trim()}
-                onClick={saveTemplate}>Save as template</button>
+        <Button variant="secondary" disabled={!templateName.trim()}
+                onClick={saveTemplate} className="shrink-0">Save as template</Button>
       </div>
       <button type="button" className="text-sm text-accent" onClick={() => setShowScript(!showScript)}>
         {showScript ? "Hide script" : "Preview script"}
       </button>
       {showScript && <ScriptPreview script={script} />}
       {problems.length > 0 && (
-        <ul aria-label="Problems" className="list-disc rounded-sm border border-danger p-3 pl-8 text-sm text-danger">
+        <ul aria-label="Problems" className="list-disc rounded-md bg-danger-soft p-3 pl-8 text-sm text-danger">
           {problems.map((p) => <li key={p}>{p}</li>)}
         </ul>
       )}
       {note && <p role="status" className="text-sm">{note}</p>}
       <div className="flex gap-2">
-        <button type="button" className={secondary} onClick={onBack}>Back</button>
-        <button type="button" className={primary} disabled={busy || problems.length > 0}
-                onClick={submit}>Submit job</button>
+        <Button variant="secondary" onClick={onBack}>Back</Button>
+        <Button loading={busy} disabled={problems.length > 0} onClick={submit}>Submit job</Button>
       </div>
     </div>
   );

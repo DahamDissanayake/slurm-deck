@@ -5,8 +5,10 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-# Root, because it creates accounts and drops to each user for their work.
-User=root
+# Runs as root, because it creates accounts and drops to each user for their
+# work. Root is the default, so there is no User= line: with User= set, plus
+# NoNewPrivileges and the sandbox below, systemd starts the service without
+# CAP_SETUID in its permitted set and every run-as-user call fails (SLURM-74).
 EnvironmentFile=/etc/slurm-deck-web/agent.env
 ExecStart=/opt/slurm-deck-web/agent-venv/bin/python -m deckagent
 RuntimeDirectory=slurm-deck-web

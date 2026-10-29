@@ -33,7 +33,9 @@ class Caller:
     """Who a request acts for, resolved from the session (deckagent.sessions).
 
     role is "user", "admin" or "worker". acting_admin is the admin's username
-    when an admin is viewing as this user.
+    when an admin is viewing as this user. email is the account's registered
+    address (the viewed user's when acting as), which a job's --mail-user
+    must equal; None when unknown, and then --mail-user is refused.
     """
 
     username: str | None
@@ -41,6 +43,7 @@ class Caller:
     linux_kind: str | None
     is_worker: bool
     acting_admin: str | None
+    email: str | None = None
 
 
 @dataclass(frozen=True)
