@@ -109,7 +109,8 @@ def submit(ctx: RequestContext, payload: dict[str, Any]) -> dict[str, Any]:
     folder_name, script = str(payload.get("folder_name", "")), str(payload.get("script", ""))
     if not FOLDER_RE.fullmatch(folder_name) or folder_name in (".", ".."):
         raise AgentError("bad_folder", "That job folder name isn't allowed.", 422)
-    problems = validate_sbatch(script, user, nfs_root=cfg.nfs_root, jobs_subdir=subdir)
+    problems = validate_sbatch(script, user, nfs_root=cfg.nfs_root, jobs_subdir=subdir,
+                               registered_email=caller.email)
     if problems:
         raise AgentError("bad_script", "; ".join(problems), 422, {"problems": problems})
     extra = _extra_files(payload.get("extra_files"))
