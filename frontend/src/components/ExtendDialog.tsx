@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { ApiError } from "../api/client";
 import { jobs } from "../api/jobs";
+import { Button } from "./ui/Button";
 
 /** Add 1, 2 or 4 hours to a running job. A refusal (such as going over the
  * cap) is shown exactly as the server words it. */
@@ -26,17 +27,16 @@ export function ExtendDialog({ jobId, onClose, onDone }: {
 
   return (
     <div role="dialog" aria-label={`Extend job ${jobId}`}
-         className="mt-3 rounded-sm border border-border bg-surface-2 p-4">
-      <p className="mb-3 text-sm">Add time to job {jobId}:</p>
+         className="mt-3 rounded-md border border-border bg-surface-2 p-4">
+      <p className="mb-3 text-md text-text">Add time to job {jobId}:</p>
       {error && <p role="alert" className="mb-3 text-sm text-danger">{error}</p>}
-      <div className="flex gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         {[1, 2, 4].map((h) => (
-          <button key={h} type="button" disabled={busy} onClick={() => extend(h)}
-                  className="rounded-sm border border-accent px-3 py-1 text-sm text-accent disabled:opacity-50">
+          <Button key={h} variant="secondary" size="sm" pill disabled={busy} onClick={() => extend(h)}>
             +{h} h
-          </button>
+          </Button>
         ))}
-        <button type="button" onClick={onClose} className="ml-auto text-sm text-text-dim">Close</button>
+        <Button variant="ghost" size="sm" pill onClick={onClose} className="ml-auto">Close</Button>
       </div>
     </div>
   );
