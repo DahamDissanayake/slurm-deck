@@ -23,14 +23,14 @@ const decode = (s: string) => {
   }
 };
 
-/** The page title and, below the top level, the trail back up to it. File
- * paths keep their own spelling; other segments read as words. */
+/** The page title and, below the top level, the trail back up to it. */
 export function crumbsFor(pathname: string): { title: string; crumbs: Crumb[] } {
   const section = sectionOf(pathname);
   if (!section) return { title: TITLES[pathname] ?? "Not found", crumbs: [] };
   const rest = pathname.slice(section.href.length).split("/").filter(Boolean);
-  if (!rest.length) return { title: section.label, crumbs: [] };
-  const word = (s: string) => (section.href === "/files" ? s : s.charAt(0).toUpperCase() + s.slice(1).replace(/-/g, " "));
+  // The files workspace shows its own folder path.
+  if (!rest.length || section.href === "/files") return { title: section.label, crumbs: [] };
+  const word = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).replace(/-/g, " ");
   const crumbs = [{ label: section.label, href: section.href }];
   rest.forEach((segment, i) => {
     crumbs.push({ label: word(decode(segment)), href: `${section.href}/${rest.slice(0, i + 1).join("/")}` });

@@ -122,12 +122,14 @@ describe("top bar", () => {
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Dashboard");
     expect(screen.queryByRole("navigation", { name: "Breadcrumb" })).not.toBeInTheDocument();
 
-    act(() => { window.history.pushState({}, "", "/files/data/run%201"); window.dispatchEvent(new PopStateEvent("popstate")); });
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Files");
+    act(() => { window.history.pushState({}, "", "/jobs/42"); window.dispatchEvent(new PopStateEvent("popstate")); });
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Jobs");
     const crumbs = screen.getByRole("navigation", { name: "Breadcrumb" });
-    expect(within(crumbs).getByRole("link", { name: "Files" })).toHaveAttribute("href", "/files");
-    expect(within(crumbs).getByRole("link", { name: "data" })).toHaveAttribute("href", "/files/data");
-    expect(within(crumbs).getByText("run 1")).toHaveAttribute("aria-current", "page");
+    expect(within(crumbs).getByRole("link", { name: "Jobs" })).toHaveAttribute("href", "/jobs");
+    expect(within(crumbs).getByText("42")).toHaveAttribute("aria-current", "page");
+
+    act(() => { window.history.pushState({}, "", "/files/data"); window.dispatchEvent(new PopStateEvent("popstate")); });
+    expect(screen.queryByRole("navigation", { name: "Breadcrumb" })).not.toBeInTheDocument();
   });
 
   it("names the account and usage pages", async () => {

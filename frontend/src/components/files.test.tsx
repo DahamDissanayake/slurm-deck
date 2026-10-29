@@ -82,7 +82,8 @@ describe("Files workspace", () => {
       ? Promise.resolve(new Response(JSON.stringify(ROOTS.body), { headers: { "Content-Type": "application/json" } }))
       : new Promise(() => {})));
     render(<Files />);
-    expect(await screen.findByRole("status", { name: "Loading files" })).toBeInTheDocument();
+    await screen.findByRole("navigation", { name: "Places" });
+    expect(screen.getByRole("status", { name: "Loading files" })).toBeInTheDocument();
   });
 
   it("shows an error with Retry that reloads, instead of a bare failure message", async () => {

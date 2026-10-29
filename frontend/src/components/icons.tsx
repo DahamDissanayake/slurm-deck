@@ -97,6 +97,13 @@ export const EyeIcon = (p: Props) => (
 export const SidebarIcon = (p: Props) => (
   <Icon {...p}><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16" /></Icon>
 );
+export const LockIcon = (p: Props) => (
+  <Icon {...p}><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></Icon>
+);
+export const SortIcon = (p: Props) => <Icon {...p}><path d="M7 4v16M4 17l3 3 3-3M17 20V4M14 7l3-3 3 3" /></Icon>;
+export const MoveIcon = (p: Props) => (
+  <Icon {...p}><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><path d="M9 13h6M13 10l3 3-3 3" /></Icon>
+);
 export const ExternalIcon = (p: Props) => <Icon {...p}><path d="M14 4h6v6M20 4l-9 9M18 14v6H4V6h6" /></Icon>;
 export const TerminalIcon = (p: Props) => (
   <Icon {...p}><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M7 9l3 3-3 3M12 15h5" /></Icon>
