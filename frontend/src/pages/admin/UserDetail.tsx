@@ -3,7 +3,8 @@ import { useCallback, useEffect, useState } from "react";
 import { type AccountRow, admin, day } from "../../api/admin";
 import { ApiError } from "../../api/client";
 import { navigate } from "../../app/navigation";
-import { Panel } from "../../components/Panel";
+import { Card } from "../../components/ui/Card";
+import { Skeleton } from "../../components/ui/Skeleton";
 import { Alert, Field } from "../PublicPage";
 import { smallDanger } from "../../components/controls";
 import { smallButton } from "./AdminLayout";
@@ -30,10 +31,10 @@ export function UserDetail({ id }: { id: number }) {
     }
   }
 
-  if (!a) return <Panel title="User"><p className="text-text-dim">Loading…</p></Panel>;
+  if (!a) return <Card title="User"><Skeleton variant="row" count={3} label="Loading user" /></Card>;
   const viewable = a.status === "active" && a.role === "user" && a.linux_kind === "hidden";
   return (
-    <Panel title={a.username}>
+    <Card title={a.username}>
       {message && <Alert tone={message.ok ? "ok" : "danger"}>{message.text}</Alert>}
       <dl className="mb-6 grid grid-cols-[10rem_1fr] gap-y-1 text-sm">
         <dt className="text-text-dim">Name</dt><dd>{a.full_name}</dd>
@@ -62,7 +63,7 @@ export function UserDetail({ id }: { id: number }) {
       </div>
       {deleting && <DeleteDialog account={a} onCancel={() => setDeleting(false)}
                                  onDone={() => navigate("/admin/users")} />}
-    </Panel>
+    </Card>
   );
 }
 

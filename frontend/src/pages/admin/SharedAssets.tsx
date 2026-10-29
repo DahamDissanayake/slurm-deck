@@ -3,7 +3,7 @@ import { useState } from "react";
 import { ApiError } from "../../api/client";
 import { AREAS, cluster } from "../../api/cluster";
 import { FilePicker } from "../../components/FilePicker";
-import { Panel } from "../../components/Panel";
+import { Card } from "../../components/ui/Card";
 import { inputClass, primaryButton, smallButton } from "./AdminLayout";
 
 const say = (e: unknown, fallback: string) =>
@@ -37,7 +37,7 @@ export function SharedAssets() {
   }
 
   return (
-    <Panel title="Shared assets">
+    <Card title="Shared assets">
       <p className="mb-3 text-sm text-text-dim">
         Copies a folder or file from a user's area into <code>/shared</code>. Users can read the
         shared areas but not change them.
@@ -69,6 +69,6 @@ export function SharedAssets() {
         {note && <p role="status">{note}</p>}
       </div>
       {picking && <FilePicker mode="dir" onClose={() => setPicking(false)} onPick={setSrc} />}
-    </Panel>
+    </Card>
   );
 }

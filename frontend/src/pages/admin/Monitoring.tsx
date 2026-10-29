@@ -1,7 +1,7 @@
 import { type ReactNode, useEffect, useState } from "react";
 
 import { type AgentEvent, type AuditRow, type MailRow, adminOps } from "../../api/adminOps";
-import { Panel } from "../../components/Panel";
+import { Card } from "../../components/ui/Card";
 import { inputClass, smallButton } from "./AdminLayout";
 import { ServiceUnits } from "./Cluster";
 
@@ -15,7 +15,7 @@ function Table({ head, rows, pager }: { head: string[]; rows: ReactNode[][];
                                          pager?: [number, boolean, (p: number) => void] }) {
   return (
     <>
-      <table className="w-full text-left text-sm">
+      <table className="w-full text-left text-sm [&_th]:py-2 [&_th]:font-medium [&_td]:py-2">
         <thead className="text-text-dim"><tr>{head.map((h) => <th key={h}>{h}</th>)}</tr></thead>
         <tbody>
           {rows.map((r, i) => (
@@ -93,7 +93,7 @@ function MailLog() {
 export function Monitoring() {
   const [tab, setTab] = useState<Tab>("audit");
   return (
-    <Panel title="Monitoring">
+    <Card title="Monitoring">
       <div role="tablist" className="mb-4 flex gap-4 border-b border-border text-sm">
         {TABS.map(([t, label]) => (
           <button key={t} role="tab" type="button" aria-selected={tab === t} onClick={() => setTab(t)}
@@ -103,6 +103,6 @@ export function Monitoring() {
       </div>
       {tab === "audit" && <Audit />}{tab === "agent" && <AgentLog />}
       {tab === "mail" && <MailLog />}{tab === "services" && <ServiceUnits />}
-    </Panel>
+    </Card>
   );
 }
