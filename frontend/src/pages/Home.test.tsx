@@ -48,12 +48,13 @@ describe("Home stat tiles", () => {
 
   it("shows skeletons until the cluster reports, and dashes without live stats", () => {
     mockFetch({ "GET /api/cluster/status": status(NODE) });
-    live.value = { ...live.value, cluster: null };
+    const full = live.value;
+    live.value = { ...full, cluster: null };
     const { unmount } = render(<Home />);
     expect(screen.getByRole("status", { name: "Loading the cluster" })).toBeInTheDocument();
     unmount();
 
-    live.value = { ...live.value, cluster: { ...live.value.cluster!, node: { ...NODE, live_stats: false } } };
+    live.value = { ...full, cluster: { ...full.cluster!, node: { ...NODE, live_stats: false } } };
     render(<Home />);
     expect(tile("GPU utilisation")).toHaveTextContent("—");
     expect(tile("Pods free")).toHaveTextContent("5");

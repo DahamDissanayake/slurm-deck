@@ -1,52 +1,84 @@
-import { duration } from "../api/jobs";
+import { type ReactNode, useEffect } from "react";
+
 import { useLive } from "../api/live";
-import { Link } from "../app/navigation";
-import { ClusterStrip } from "../components/ClusterStrip";
+import { Link, useLocation } from "../app/navigation";
+import { ClusterCard, ClusterTiles, HardwareCard, useStatus } from "../components/ClusterCards";
+import { AlertIcon, FolderIcon, JobsIcon, PlusIcon, ServerIcon } from "../components/icons";
 import { JobCard } from "../components/JobCard";
-import { Panel } from "../components/Panel";
+import { buttonClass } from "../components/ui/Button";
+import { Card } from "../components/ui/Card";
+import { cx } from "../components/ui/cx";
+import { EmptyState } from "../components/ui/EmptyState";
+import { Skeleton } from "../components/ui/Skeleton";
+
+function Notice({ role, children }: { role: "status" | "alert"; children: ReactNode }) {
+  return (
+    <p role={role} className="flex items-center gap-2.5 rounded-md bg-warning-soft px-4 py-3 text-md text-warning">
+      <AlertIcon className="h-4 w-4 shrink-0" />
+      <span>{children}</span>
+    </p>
+  );
+}
+
+const QUICK = [
+  { href: "/new", label: "New job", icon: <PlusIcon />, variant: "primary" },
+  { href: "/files", label: "Upload files", icon: <FolderIcon />, variant: "secondary" },
+  { href: "/services", label: "Notebooks and services", icon: <ServerIcon />, variant: "secondary" },
+] as const;
 
 /** The dashboard: the cluster now, my jobs, and who else is running. */
 export function Home() {
   const { cluster, jobs, banners } = useLive();
-  const running = (cluster?.queue ?? []).filter((j) => j.state === "RUNNING");
+  const status = useStatus();
+  const { hash } = useLocation();
+
+  // /usage/hardware and /usage/cluster land on their section of this page.
+  useEffect(() => {
+    if (hash) document.getElementById(hash.slice(1))?.scrollIntoView?.();
+  }, [hash]);
+
   return (
     <div className="space-y-6">
-      {cluster?.maintenance && (
-        <p role="status" className="rounded-sm border border-warning p-3 text-warning">
-          {cluster.maintenance}
-        </p>
-      )}
-      {banners.map((b) => (
-        <p key={b.job_id} role="alert" className="rounded-sm border border-warning p-3 text-warning">
-          Job {b.job_id} ends in {b.minutes_left ?? "a few"} minutes. Extend it from its card.
-        </p>
-      ))}
-      <Panel title="Cluster">
-        <ClusterStrip cluster={cluster} />
-      </Panel>
-      <Panel title="My jobs">
-        {jobs === null ? <p className="text-sm text-text-dim">Loading…</p>
-          : jobs.length === 0 ? (
-            <p className="text-sm text-text-dim">
-              No jobs running. <Link href="/new" className="text-accent">Start one</Link>.
-            </p>
-          ) : (
-            <div className="grid gap-3 md:grid-cols-2">
-              {jobs.map((j) => <JobCard key={j.job_id} job={j} />)}
-            </div>
-          )}
-      </Panel>
-      <Panel title="Who's running">
-        {running.length === 0 ? <p className="text-sm text-text-dim">Nobody right now.</p> : (
-          <ul className="space-y-1 font-mono text-sm">
-            {running.map((j) => (
-              <li key={j.job_id}>
-                {j.user} · {j.pods} pod{j.pods === 1 ? "" : "s"} · {duration(j.time_left_s)} left
-              </li>
-            ))}
-          </ul>
-        )}
-      </Panel>
+      {cluster?.maintenance && <Notice role="status">{cluster.maintenance}</Notice>}
+      <ClusterTiles cluster={cluster} />
+      <nav aria-label="Quick actions" className="flex flex-wrap gap-2">
+        {QUICK.map(({ href, label, icon, variant }) => (
+          <Link key={href} href={href}
+                className={cx(buttonClass({ variant, size: "md", pill: true }), "gap-2 [&>svg]:h-4 [&>svg]:w-4")}>
+            {icon}{label}
+          </Link>
+        ))}
+      </nav>
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="lg:col-span-2">
+          <Card title="My jobs" icon={<JobsIcon />}>
+            {banners.length > 0 && (
+              <div className="mb-4 space-y-2">
+                {banners.map((b) => (
+                  <Notice key={b.job_id} role="alert">
+                    Job {b.job_id} ends in {b.minutes_left ?? "a few"} minutes. Extend it from its card.
+                  </Notice>
+                ))}
+              </div>
+            )}
+            {jobs === null ? <Skeleton variant="row" count={3} label="Loading your jobs" />
+              : jobs.length === 0 ? (
+                <EmptyState icon={<JobsIcon />} title="No jobs yet"
+                            action={<Link href="/new" className={buttonClass({ size: "md", pill: true })}>Start a job</Link>}>
+                  Jobs you start show up here with their time left.
+                </EmptyState>
+              ) : (
+                <div className="grid gap-3 md:grid-cols-2">
+                  {jobs.map((j) => <JobCard key={j.job_id} job={j} />)}
+                </div>
+              )}
+          </Card>
+        </div>
+        <div className="space-y-6">
+          <div id="hardware" className="scroll-mt-20"><HardwareCard status={status} /></div>
+          <div id="cluster" className="scroll-mt-20"><ClusterCard status={status} cluster={cluster} /></div>
+        </div>
+      </div>
     </div>
   );
 }

@@ -33,6 +33,9 @@ const STATES: Record<string, [string, Tone]> = {
   CANCELLED: ["Cancelled", "neutral"],
   ACTIVE: ["Active", "ok"], INACTIVE: ["Stopped", "neutral"], ACTIVATING: ["Starting", "pending"],
   DEACTIVATING: ["Stopping", "pending"], RELOADING: ["Reloading", "pending"],
+  IDLE: ["Idle", "ok"], MIXED: ["Partly busy", "running"], ALLOCATED: ["Busy", "running"],
+  DRAINING: ["Draining", "warning"], DRAINED: ["Drained", "warning"], DOWN: ["Down", "danger"],
+  FAIL: ["Failed", "danger"], STALE: ["Stale", "warning"],
   BUILDING: ["Building", "pending"], OK: ["Ready", "ok"], DONE: ["Done", "ok"], ENDED: ["Ended", "neutral"],
 };
 

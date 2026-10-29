@@ -2,6 +2,7 @@ import { type ReactNode, useCallback, useEffect, useState } from "react";
 
 import { getMe, type Me, stopViewing } from "../api/auth";
 import { useLive } from "../api/live";
+import { ToastProvider } from "../components/ui/Toast";
 import { useLocation } from "./navigation";
 import { Drawer, navFor, Sidebar, useRailExpanded } from "./Sidebar";
 import { TopBar } from "./TopBar";
@@ -29,7 +30,9 @@ export function AppShell({ children }: { children: ReactNode }) {
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar pathname={pathname} name={me.account.full_name} actingAs={me.acting_as?.username ?? null}
                 live={live} onMenu={() => setDrawer(true)} onStopViewing={() => stopViewing().then(load)} />
-        <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 md:px-8">{children}</main>
+        <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 md:px-8">
+          <ToastProvider>{children}</ToastProvider>
+        </main>
       </div>
     </div>
   );
