@@ -2,8 +2,12 @@ import { useEffect, useState } from "react";
 
 import { ApiError } from "../api/client";
 import { newjob } from "../api/newjob";
-import { Panel } from "../components/Panel";
-import { input, primary, secondary } from "../components/controls";
+import { Card } from "../components/ui/Card";
+import { input } from "../components/controls";
+import { BellIcon } from "../components/icons";
+import { Button } from "../components/ui/Button";
+import { Skeleton } from "../components/ui/Skeleton";
+import { StatusBadge } from "../components/ui/StatusBadge";
 
 /** "Email me when N pods are free": one subscription per account, sent once. */
 export function Notify() {
@@ -24,30 +28,29 @@ export function Notify() {
   }
 
   return (
-    <Panel title="Notify me">
-      {wanted === undefined ? <p className="text-text-dim">Loading…</p> : (
+    <Card title="Notify me">
+      {wanted === undefined ? <Skeleton variant="row" count={1} label="Loading notification" /> : (
         <>
-          <p className="mb-4">
+          <p className="mb-4 flex items-center gap-2">
+            <StatusBadge state={wanted ? "active" : "inactive"} />
             {wanted ? `You'll get one email when ${wanted} pods are free.`
               : "You have no notification set."}
           </p>
-          {error && <p role="alert" className="mb-3 text-danger">{error}</p>}
+          {error && <p role="alert" className="mb-3 rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
           <div className="flex items-end gap-2">
             <label className="text-sm text-text-dim">Pods wanted
               <input type="number" min={1} value={pods} className={`${input} w-24`}
                      onChange={(e) => setPods(Number(e.target.value))} />
             </label>
-            <button type="button" className={primary}
-                    onClick={() => run(() => newjob.setNotify(pods), pods)}>
+            <Button icon={<BellIcon />} onClick={() => run(() => newjob.setNotify(pods), pods)}>
               {wanted ? "Change" : "Notify me"}
-            </button>
+            </Button>
             {wanted ? (
-              <button type="button" className={secondary}
-                      onClick={() => run(() => newjob.stopNotify(), null)}>Stop</button>
+              <Button variant="secondary" onClick={() => run(() => newjob.stopNotify(), null)}>Stop</Button>
             ) : null}
           </div>
         </>
       )}
-    </Panel>
+    </Card>
   );
 }
