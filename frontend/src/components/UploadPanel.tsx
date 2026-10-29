@@ -3,7 +3,11 @@ import { Upload } from "tus-js-client";
 
 import { csrfToken } from "../api/client";
 import { type ActiveUpload, ARCHIVE, files, formatBytes, join } from "../api/files";
-import { primary, secondary } from "../pages/NewJob/StepInputs";
+import { fileIcon, PauseIcon, PlayIcon, XIcon } from "./icons";
+import { Button } from "./ui/Button";
+import { IconButton } from "./ui/IconButton";
+import { Meter } from "./ui/Meter";
+import { Notice } from "./ui/Notice";
 
 const ZIP_HINT = "Zip first — 1 million small files upload far slower than one archive.";
 const MANY_FILES = 1000;
@@ -11,6 +15,8 @@ const MANY_FILES = 1000;
 type Item = { key: string; name: string; size: number; sent: number; speed: number;
               state: "waiting" | "uploading" | "paused" | "done" | "failed" | "cancelled";
               error?: string };
+/** Files to upload; a new `id` is a new batch. */
+export type Incoming = { files: File[]; id: number };
 
 const relPath = (f: File) => (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name;
 const dirOf = (rel: string) => rel.split("/").slice(0, -1).join("/");
@@ -26,14 +32,19 @@ function reason(err: Error): string {
   }
 }
 
-/** Resumable uploads into destDir: files or a whole folder, 64 MB tus chunks,
- * resumable after a reload by choosing the same file again. */
-export function UploadPanel({ destDir, onDone }: { destDir: string; onDone?: () => void }) {
+/** The upload tray: resumable uploads into destDir, 64 MB tus chunks,
+ * resumable after a reload by choosing the same file again. Files handed in
+ * as `incoming` start at once; a big folder or an archive waits for a
+ * choice first (zip it, or extract it afterwards). */
+export function UploadPanel({ destDir, onDone, incoming }: {
+  destDir: string; onDone?: () => void; incoming?: Incoming | null;
+}) {
   const [queue, setQueue] = useState<File[]>([]);
   const [extract, setExtract] = useState(false);
   const [items, setItems] = useState<Item[]>([]);
   const [active, setActive] = useState<ActiveUpload[]>([]);
   const uploads = useRef(new Map<string, { upload: Upload; done: () => void }>());
+  const handled = useRef<number | null>(null);
 
   useEffect(() => {
     files.activeUploads().then((r) => setActive(r.uploads), () => setActive([]));
@@ -42,7 +53,7 @@ export function UploadPanel({ destDir, onDone }: { destDir: string; onDone?: () 
   const update = (key: string, patch: Partial<Item>) =>
     setItems((xs) => xs.map((x) => (x.key === key ? { ...x, ...patch } : x)));
 
-  function send(file: File, key: string, dest: string): Promise<void> {
+  function send(file: File, key: string, dest: string, unpack: boolean): Promise<void> {
     return new Promise((resolve) => {
       let last = { t: Date.now(), bytes: 0 };
       const upload = new Upload(file, {
@@ -60,7 +71,7 @@ export function UploadPanel({ destDir, onDone }: { destDir: string; onDone?: () 
         },
         onSuccess: async () => {
           update(key, { sent: file.size, state: "done" });
-          if (extract && ARCHIVE.test(file.name)) {
+          if (unpack && ARCHIVE.test(file.name)) {
             await files.extract(join(dest, file.name), dest).catch(
               () => update(key, { error: "It uploaded, but extracting it didn't work." }));
           }
@@ -76,8 +87,8 @@ export function UploadPanel({ destDir, onDone }: { destDir: string; onDone?: () 
     });
   }
 
-  async function start() {
-    const batch = queue.map((f, i) => ({ f, key: `${Date.now()}-${i}`, rel: relPath(f) }));
+  async function start(list: File[], unpack: boolean) {
+    const batch = list.map((f, i) => ({ f, key: `${Date.now()}-${i}`, rel: relPath(f) }));
     setQueue([]);
     setItems((xs) => [...xs, ...batch.map(({ f, key, rel }) => ({
       key, name: rel, size: f.size, sent: 0, speed: 0, state: "waiting" as const }))]);
@@ -88,11 +99,24 @@ export function UploadPanel({ destDir, onDone }: { destDir: string; onDone?: () 
     }
     for (const b of batch) {
       const dir = dirOf(b.rel);
-      await send(b.f, b.key, dir ? join(destDir, dir) : destDir);
+      await send(b.f, b.key, dir ? join(destDir, dir) : destDir, unpack);
     }
     setActive([]);
     onDone?.();
   }
+
+  useEffect(() => {
+    if (!incoming || handled.current === incoming.id || incoming.files.length === 0) return;
+    handled.current = incoming.id;
+    if (incoming.files.length > MANY_FILES || incoming.files.some((f) => ARCHIVE.test(f.name))) {
+      setExtract(false);
+      setQueue(incoming.files);
+    } else {
+      void start(incoming.files, false);
+    }
+    // start() closes over destDir and onDone, which belong to this batch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [incoming]);
 
   function control(key: string, action: "pause" | "resume" | "cancel") {
     const u = uploads.current.get(key);
@@ -107,58 +131,60 @@ export function UploadPanel({ destDir, onDone }: { destDir: string; onDone?: () 
     if (action === "cancel") u.done();
   }
 
-  const pick = (list: FileList | null) => setQueue(list ? Array.from(list) : []);
+  if (!queue.length && !items.length && !active.length) return null;
   return (
-    <div className="text-sm">
+    <section aria-label="Uploads" className="rounded-lg border border-border bg-surface p-4 text-md shadow-lg">
+      <h2 className="mb-3 text-md font-semibold text-text">Uploads</h2>
       {active.length > 0 && (
-        <p className="mb-2 text-text-dim">
+        <Notice tone="info" className="mb-3">
           Unfinished: {active.map((a) => `${a.filename} (${formatBytes(a.offset)} of ${formatBytes(a.size)})`)
             .join(", ")}. Choose the same file again to resume it.
-        </p>
+        </Notice>
       )}
-      <div className="flex flex-wrap items-center gap-3">
-        <label className={secondary}>Upload files
-          <input type="file" multiple className="sr-only" onChange={(e) => pick(e.target.files)} />
-        </label>
-        <label className={secondary}>Upload folder
-          <input type="file" multiple className="sr-only" onChange={(e) => pick(e.target.files)}
-                 {...{ webkitdirectory: "" }} />
-        </label>
-      </div>
       {queue.length > 0 && (
-        <div className="mt-3">
-          <p>{queue.length} file{queue.length === 1 ? "" : "s"},{" "}
+        <div className="mb-3 space-y-2">
+          <p className="text-text">{queue.length} file{queue.length === 1 ? "" : "s"},{" "}
             {formatBytes(queue.reduce((n, f) => n + f.size, 0))}, to {destDir}</p>
-          {queue.length > MANY_FILES && <p role="note" className="text-warning">{ZIP_HINT}</p>}
+          {queue.length > MANY_FILES && <Notice role="note">{ZIP_HINT}</Notice>}
           {queue.some((f) => ARCHIVE.test(f.name)) && (
-            <label className="block"><input type="checkbox" checked={extract}
-              onChange={(e) => setExtract(e.target.checked)} /> Extract after upload</label>
+            <label className="flex items-center gap-2 text-text"><input type="checkbox" checked={extract}
+              onChange={(e) => setExtract(e.target.checked)} className="h-4 w-4 accent-accent" /> Extract after upload</label>
           )}
-          <button type="button" className={`${primary} mt-2`} onClick={start}>Start upload</button>
+          <div className="flex gap-2">
+            <Button size="sm" pill onClick={() => start(queue, extract)}>Start upload</Button>
+            <Button variant="ghost" size="sm" pill onClick={() => setQueue([])}>Cancel</Button>
+          </div>
         </div>
       )}
-      <ul className="mt-3 space-y-1">
+      <ul className="max-h-60 space-y-3 overflow-y-auto">
         {items.map((x) => {
           const left = x.speed > 0 ? Math.round((x.size - x.sent) / x.speed) : null;
+          const Icon = fileIcon(x.name);
           return (
-            <li key={x.key} className="flex flex-wrap items-center gap-2">
-              <span className="font-mono">{x.name}</span>
-              <progress max={x.size || 1} value={x.sent} aria-label={`${x.name} progress`} />
-              <span className="text-text-dim">
-                {x.state === "uploading" ? `${formatBytes(x.speed)}/s${left !== null ? `, ${left} s left` : ""}`
-                  : x.state}
-              </span>
-              {x.error && <span role="alert" className="text-danger">{x.error}</span>}
+            <li key={x.key} className="flex items-center gap-3">
+              <span aria-hidden="true" className="text-text-dim"><Icon className="h-5 w-5" /></span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="truncate font-mono text-sm text-text">{x.name}</span>
+                  <span className="shrink-0 text-xs text-text-dim">
+                    {x.state === "uploading" ? `${formatBytes(x.speed)}/s${left !== null ? `, ${left} s left` : ""}`
+                      : x.state}
+                  </span>
+                </div>
+                <Meter label={`${x.name} progress`} value={x.sent} max={x.size || 1}
+                       tone={x.state === "failed" ? "danger" : x.state === "done" ? "ok" : "accent"} className="mt-1.5" />
+                {x.error && <p role="alert" className="mt-1 text-xs text-danger">{x.error}</p>}
+              </div>
               {x.state === "uploading" && (
-                <button type="button" onClick={() => control(x.key, "pause")}>Pause</button>)}
+                <IconButton label={`Pause ${x.name}`} icon={<PauseIcon />} size="sm" onClick={() => control(x.key, "pause")} />)}
               {x.state === "paused" && (
-                <button type="button" onClick={() => control(x.key, "resume")}>Resume</button>)}
+                <IconButton label={`Resume ${x.name}`} icon={<PlayIcon />} size="sm" onClick={() => control(x.key, "resume")} />)}
               {(x.state === "uploading" || x.state === "paused") && (
-                <button type="button" onClick={() => control(x.key, "cancel")}>Cancel</button>)}
+                <IconButton label={`Cancel ${x.name}`} icon={<XIcon />} size="sm" onClick={() => control(x.key, "cancel")} />)}
             </li>
           );
         })}
       </ul>
-    </div>
+    </section>
   );
 }

@@ -1,6 +1,6 @@
 /** A small router on the History API: enough for this app's routes
  * (`:param` segments and a trailing `*`) without adding a dependency. */
-import { type AnchorHTMLAttributes, useSyncExternalStore } from "react";
+import { type AnchorHTMLAttributes, useEffect, useSyncExternalStore } from "react";
 
 function subscribe(onChange: () => void) {
   window.addEventListener("popstate", onChange);
@@ -18,6 +18,15 @@ export function useLocation() {
 export function navigate(to: string) {
   window.history.pushState({}, "", to);
   window.dispatchEvent(new PopStateEvent("popstate"));
+}
+
+/** Sends the visitor to `to` in place of this page, so Back doesn't return here. */
+export function Redirect({ to }: { to: string }) {
+  useEffect(() => {
+    window.history.replaceState({}, "", to);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, [to]);
+  return null;
 }
 
 /** Params for a pattern like `/jobs/:id` or `/files/*`, or null when it doesn't match. */
