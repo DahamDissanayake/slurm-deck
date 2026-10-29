@@ -171,7 +171,7 @@ export function Files() {
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
         <div className="shrink-0 space-y-4 lg:w-56">
           <Places roots={roots} root={root} />
-          {root && <FolderTree root={root} dir={dir} />}
+          {root && <div className="border-t border-border pt-3"><FolderTree root={root} dir={dir} /></div>}
         </div>
         <section aria-label="Files" {...drag}
                  className="relative min-w-0 flex-1 rounded-lg border border-border bg-surface p-4 shadow-sm">

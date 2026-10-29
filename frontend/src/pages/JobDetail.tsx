@@ -3,8 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ApiError } from "../api/client";
 import { duration, isLive, type JobInfo, jobs } from "../api/jobs";
 import { ExtendDialog } from "../components/ExtendDialog";
-import { Chip } from "../components/JobCard";
-import { ClockIcon, FileTextIcon, FolderIcon, GpuIcon, PlusIcon, RefreshIcon, TerminalIcon, XIcon } from "../components/icons";
+import { FileTextIcon, GpuIcon, PlusIcon, RefreshIcon, TerminalIcon, XIcon } from "../components/icons";
 import { LogViewer } from "../components/LogViewer";
 import { OpenButton } from "../components/OpenButton";
 import { Card } from "../components/ui/Card";
@@ -86,10 +85,6 @@ export function JobDetail({ id }: { id: string }) {
       <Tabs label="Job sections" tabs={tabs} value={section} onChange={setSection}>
         {section === "overview" && (
           <div className="space-y-4">
-            <div className="flex flex-wrap gap-1.5">
-              <Chip icon={<ClockIcon />}>{duration(job.run_time_s)} of {duration(job.time_limit_s)}</Chip>
-              <Chip icon={<FolderIcon />}>{job.kind}</Chip>
-            </div>
             <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <Fact label="Node"><span className="font-mono">{job.node || "—"}</span></Fact>
               <Fact label="Time used">{duration(job.run_time_s)}</Fact>
