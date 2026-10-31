@@ -147,7 +147,12 @@ def build(body: BuildIn, ctx: UserWrite, request: Request, db: Db, settings: Set
     kind: Literal["conda", "venv"] = "venv" if body.kind == "venv" else "conda"
     account = ctx.effective_account
     user, nfs = account.username, settings.nfs_root
-    dest = f"{user_upload_root(nfs, user)}/envs/{body.name}"
+    dest = f"{user_upload_root(nfs, user)}/my-envs/{body.name}"
+    existing = _call(request, ctx, "env.list", {})
+    if any(e["name"] == body.name for g in ("prebuilt", "mine") for e in existing.get(g, [])):
+        raise ApiError(409, "env_name_taken",
+                       message=f"An environment named {body.name} already exists. "
+                               "Pick another name.")
     folder_name = job_folder_name(f"env-{body.name}", now)
     try:
         shlex.split(body.packages)

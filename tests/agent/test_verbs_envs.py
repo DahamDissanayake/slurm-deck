@@ -15,7 +15,7 @@ def envs(jobs, monkeypatch):  # noqa: F811
     monkeypatch.setattr(envs_mod, "run_as", _run_as(jobs))
     shared = jobs.dir / "shared"
     for env, ok in (("envs/vision", True), ("envs/llm-serve", False),
-                    ("users/amasha/envs/mine", True)):
+                    ("users/amasha/my-envs/mine", True)):
         (shared / env / "bin").mkdir(parents=True)
         python = shared / env / "bin/python"
         python.write_text(f'#!/bin/sh\nexec {sys.executable} "$@"\n')
@@ -52,7 +52,7 @@ def test_list_shows_prebuilt_mine_and_images(envs):
     root = str(envs.dir / "shared")
     assert {(e["name"], e["ready"]) for e in r["prebuilt"]} == {("vision", True),
                                                                  ("llm-serve", False)}
-    assert r["mine"] == [{"name": "mine", "path": f"{root}/users/amasha/envs/mine",
+    assert r["mine"] == [{"name": "mine", "path": f"{root}/users/amasha/my-envs/mine",
                           "kind": "mine", "ready": True}]
     assert [e["name"] for e in r["images"]] == ["pytorch.sif"]
 
@@ -82,7 +82,7 @@ def test_check_imports_reports_missing(envs):
 def test_check_imports_never_runs_the_users_interpreter(envs):
     """A user's env is the user's files: neither its bin/python nor a .pth file
     in its site-packages may run outside a Slurm job (SLURM-49 finding 2)."""
-    env = envs.dir / "shared/users/amasha/envs/evil"
+    env = envs.dir / "shared/users/amasha/my-envs/evil"
     (env / "bin").mkdir(parents=True)
     marker = envs.dir / "ran-on-login-node"
     python = env / "bin/python"
@@ -99,7 +99,7 @@ def test_check_imports_never_runs_the_users_interpreter(envs):
 
 
 def test_check_imports_needs_a_python_env(envs):
-    env = envs.dir / "shared/users/amasha/envs/empty"
+    env = envs.dir / "shared/users/amasha/my-envs/empty"
     env.mkdir(parents=True)
     script = envs.dir / "shared/users/amasha/train.py"
     script.write_text("import os\n")
@@ -113,8 +113,8 @@ def test_check_imports_refuses_paths_outside_the_jail(envs):
 
 
 def test_delete_own_env_only(envs):
-    envs.call("env.delete", {"path": str(envs.dir / "shared/users/amasha/envs/mine")})
-    assert not (envs.dir / "shared/users/amasha/envs/mine").exists()
+    envs.call("env.delete", {"path": str(envs.dir / "shared/users/amasha/my-envs/mine")})
+    assert not (envs.dir / "shared/users/amasha/my-envs/mine").exists()
     e = _err(envs, "env.delete", {"path": str(envs.dir / "shared/envs/vision")})
     assert e.status == 403 and (envs.dir / "shared/envs/vision").exists()
 

@@ -114,7 +114,7 @@ def test_parse_pip_deps_and_top_level_names():
 
 
 def _build(**kw) -> str:
-    args = dict(kind="conda", name="my-env", dest="/shared/users/amasha/envs/my-env",
+    args = dict(kind="conda", name="my-env", dest="/shared/users/amasha/my-envs/my-env",
                 packages="numpy 'pandas>=2' $(id)", requirements_path=None, spec_path=None)
     args.update(kw)
     return render_env_build("amasha", "/shared/jobs/amasha/env_build_1", "/home/amasha",
@@ -145,7 +145,7 @@ def test_build_quotes_user_packages():
 def test_build_from_spec_verifies_its_packages():
     spec = str(SPECS / "llm-finetune.yml")
     s = _build(spec_path=spec, packages="")
-    assert f"conda env create -p /shared/users/amasha/envs/my-env -f {shlex.quote(spec)}" in s
+    assert f"conda env create -p /shared/users/amasha/my-envs/my-env -f {shlex.quote(spec)}" in s
     packages = re.search(r"export SD_ENV_PACKAGES=(.*)", s)
     assert packages and "trl" in shlex.split(packages.group(1))[0].split()
 
@@ -173,3 +173,10 @@ def test_parse_env_result():
     assert parse_env_result("Collecting x\nSD_ENV_MISSING torch\n") == (False, ["torch"])
     assert parse_env_result("ok\nSD_ENV_OK\n") == (True, [])
     assert parse_env_result("pip failed\n") == (False, [])
+
+
+def test_user_build_stops_with_a_clear_message_when_the_name_exists():
+    s = _build()
+    assert "if [ -e /shared/users/amasha/my-envs/my-env ]" in s
+    assert "already exists" in s and s.index("already exists") < s.index("conda create")
+    assert "already exists" not in _build(spec_path=str(SPECS / "vision.yml"), packages="")

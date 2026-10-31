@@ -231,3 +231,12 @@ def test_child_command_output_never_reaches_stdout(tmp_path):
     assert r.returncode == 0, (r.stdout, r.stderr)
     assert json.loads(r.stdout) == {"ok": True}
     assert "passwd: password changed." in r.stderr
+
+
+def test_purge_removes_the_envs_the_account_built(tmp_path):
+    env = tmp_path / "users" / "amasha" / "my-envs" / "acceptenv" / "bin"
+    env.mkdir(parents=True)
+    (tmp_path / "jobs" / "amasha").mkdir(parents=True)
+    r = run_helper("purge amasha", tmp_path, WEB_USER)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert f"rm -rf --one-file-system {tmp_path / 'users' / 'amasha'}" in r.stderr

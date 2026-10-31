@@ -134,7 +134,7 @@ def _refuse() -> AgentError:
 
 def _env_roots(cfg: AgentConfig, user: str) -> tuple[str, str]:
     root = cfg.nfs_root.rstrip("/")
-    return f"{root}/envs", f"{root}/users/{user}/envs"
+    return f"{root}/envs", f"{root}/users/{user}/my-envs"
 
 
 @verb("env.list", allow=PEOPLE)
