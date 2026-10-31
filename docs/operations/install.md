@@ -20,6 +20,9 @@ existing install from the saved answers.
   "install python3-venv". If an earlier run left a venv with no `bin/pip`, the `agent`
   step removes it and makes it again.
 - Docker with Compose v2, `nft`, and working `sinfo` and `munge`.
+- Miniforge on the GPU host at `<nfs_root>/miniforge3` (with `mamba` or `conda`). The
+  `jupyter_env` step builds the shared Jupyter env at `<nfs_root>/envs/jupyter` with it and
+  stops with a clear error if neither is there.
 
 ## Answers
 
