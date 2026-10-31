@@ -329,7 +329,7 @@ def jupyter_env(ctx: Ctx) -> None:
     conda = conda or f"{root}/miniforge3/bin/mamba"
     if gpu.run(f"[ -x {q(dest + '/bin/jupyter')} ]", check=False).returncode:
         spec = f"/tmp/sd-jupyter-env.{ctx.state.data['generated'].setdefault('jupyter_tag', secrets.token_hex(4))}.yml"
-        gpu.write(spec, (ctx.repo / "deploy/cluster/envs/jupyter.yml").read_text())
+        gpu.write(spec, (ctx.repo / "deploy/cluster/jupyter-env.yml").read_text())
         gpu.run(f"install -d -m 0755 {q(root + '/envs')}")
         try:
             gpu.run(f"{q(conda)} env create -y -p {q(dest)} -f {q(spec)}")
