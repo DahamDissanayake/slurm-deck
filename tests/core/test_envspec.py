@@ -132,8 +132,8 @@ def test_build_is_a_cpu_job_with_tmp_beside_the_destination():
     s = _build()
     assert "--gres" not in s and "#SBATCH --cpus-per-task=8" in s
     assert "#SBATCH --mem=16G" in s and "#SBATCH --time=04:00:00" in s
-    assert "export TMPDIR=/shared/users/amasha/envs/.tmp-my-env" in s
-    assert "export PIP_CACHE_DIR=/shared/users/amasha/envs/.pip-cache" in s
+    assert "export TMPDIR=/shared/users/amasha/my-envs/.tmp-my-env" in s
+    assert "export PIP_CACHE_DIR=/shared/users/amasha/my-envs/.pip-cache" in s
     assert "/tmp" not in s
 
 
