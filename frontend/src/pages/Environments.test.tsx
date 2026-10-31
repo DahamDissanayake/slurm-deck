@@ -9,7 +9,7 @@ afterEach(() => vi.unstubAllGlobals());
 const ENVS = { body: {
   prebuilt: [{ name: "vision", path: "/shared/envs/vision", kind: "prebuilt", ready: true,
                missing: [] }],
-  mine: [{ name: "mytorch", path: "/shared/users/a/envs/mytorch", kind: "mine", ready: false,
+  mine: [{ name: "mytorch", path: "/shared/users/a/my-envs/mytorch", kind: "mine", ready: false,
            missing: ["torch"] }],
   images: [{ name: "pytorch.sif", path: "/shared/images/pytorch.sif", kind: "image",
              ready: true }],

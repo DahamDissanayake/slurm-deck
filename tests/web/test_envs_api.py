@@ -9,7 +9,7 @@ from accounts_helpers import _account, _client
 pytestmark = pytest.mark.pg
 
 SPECS = Path(__file__).resolve().parents[2] / "deploy/cluster/envs"
-MINE = "/shared/users/amasha/envs"
+MINE = "/shared/users/amasha/my-envs"
 
 
 class EnvAgent:
@@ -22,8 +22,11 @@ class EnvAgent:
     def call(self, verb, payload=None, *, session=None):
         self.calls.append((verb, payload))
         return {"env.list": {"prebuilt": [], "images": [], "mine": [
-                    {"name": "mytorch", "path": f"{MINE}/mytorch", "kind": "mine",
-                     "ready": False}]},
+                    {"name": "oldenv", "path": f"{MINE}/oldenv", "kind": "mine",
+                     "ready": False}] + ([{"name": "mytorch", "path": f"{MINE}/mytorch",
+                                           "kind": "mine", "ready": False}]
+                                         if any(c[0] == "job.submit" for c in self.calls[:-1])
+                                         else [])},
                 "job.submit": {"job_id": "700", "folder": "/shared/jobs/amasha/env"},
                 "job.list": {"jobs": [{"job_id": j, "state": "RUNNING"} for j in self.live]},
                 "env.check_imports": {"missing": self.missing},
@@ -74,7 +77,7 @@ def test_failed_build_is_listed_not_ready_with_missing(envs):
     r = c.get("/api/envs").json()
     [b] = r["builds"]
     assert (b["state"], b["missing"]) == ("failed", ["torch"])
-    [mine] = r["mine"]
+    [mine] = [m for m in r["mine"] if m["name"] == "mytorch"]
     assert (mine["ready"], mine["missing"]) == (False, ["torch"])
     assert not [v for v, _ in agent.calls if v == "fs.write"]
     c.get("/api/envs")   # the result is stored: the log isn't read again
@@ -112,3 +115,19 @@ def test_preview_warns_about_missing_packages(envs):
         "Python package 'tensorboard' isn't in the chosen environment."]
     assert ("env.check_imports", {"env_path": "/shared/envs/vision",
                                   "script_path": "/shared/users/amasha/train.py"}) in agent.calls
+
+
+def test_build_lands_in_the_users_own_area_not_shared_envs(envs):
+    _, agent, c = envs
+    _build(c)
+    _, payload = next(x for x in agent.calls if x[0] == "job.submit")
+    assert "conda create -y -p /shared/users/amasha/my-envs/mytorch" in payload["script"]
+    assert "/shared/envs/mytorch" not in payload["script"]
+
+
+def test_build_with_a_taken_name_is_a_clear_error(envs):
+    _, agent, c = envs
+    r = c.post("/api/envs/build", json={"kind": "conda", "name": "oldenv"})
+    assert r.status_code == 409 and r.json()["error"] == "env_name_taken"
+    assert "already exists" in r.text and "Permission denied" not in r.text
+    assert not [x for x in agent.calls if x[0] == "job.submit"]

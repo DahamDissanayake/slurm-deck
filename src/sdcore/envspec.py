@@ -156,6 +156,12 @@ def render_env_build(user: str, folder: str, home: str, *, kind: Literal["conda"
         'mkdir -p "$TMPDIR" "$PIP_CACHE_DIR"',
         "",
     ]
+    if not spec_path:
+        # A user build never reuses a name that exists, whoever owns it.
+        lines += [f"if [ -e {q(dest)} ]; then",
+                  f'    echo "ERROR: an environment named {name} already exists '
+                  f'and cannot be replaced. Pick another name." >&2',
+                  "    exit 1", "fi"]
     if kind == "conda":
         # Just the line that sources conda.sh, so `conda` works in this shell.
         lines += _activate(EnvChoice("conda", "base"), nfs_root)[:1]
