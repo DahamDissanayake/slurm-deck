@@ -111,7 +111,13 @@ def _finalize(request: Request, ctx: SessionCtx, db: Db, rows: list[EnvBuild],
         else:
             b.ok, b.missing = parse_env_result(_log(request, ctx, b.job_id))
             if b.ok:
-                _call(request, ctx, "fs.write", {"path": f"{b.path}/.sd-env-ok", "text": ""})
+                # Only a convenience for the next listing: a refused write (the
+                # path resolves outside the user's folder) must not 403 the page.
+                try:
+                    _call(request, ctx, "fs.write",
+                          {"path": f"{b.path}/.sd-env-ok", "text": ""})
+                except ApiError:
+                    pass
         b.finished_at = now
     db.commit()
 
