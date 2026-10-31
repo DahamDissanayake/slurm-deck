@@ -6,6 +6,8 @@ from pathlib import Path
 import pytest
 from accounts_helpers import _account, _client
 
+from sdweb.agent import AgentCallError
+
 pytestmark = pytest.mark.pg
 
 SPECS = Path(__file__).resolve().parents[2] / "deploy/cluster/envs"
@@ -18,9 +20,13 @@ class EnvAgent:
         self.live: list[str] = []
         self.log = b""
         self.missing: list[str] = []
+        self.refuse_write = False
 
     def call(self, verb, payload=None, *, session=None):
         self.calls.append((verb, payload))
+        if verb == "fs.write" and self.refuse_write:
+            raise AgentCallError("fs_refused",
+                                 "You can only change files in your own folder.", 403)
         return {"env.list": {"prebuilt": [], "images": [], "mine": [
                     {"name": "oldenv", "path": f"{MINE}/oldenv", "kind": "mine",
                      "ready": False}] + ([{"name": "mytorch", "path": f"{MINE}/mytorch",
@@ -90,6 +96,21 @@ def test_good_build_writes_the_ready_marker(envs):
     agent.log = b"SD_ENV_OK\n"
     assert c.get("/api/envs").json()["builds"][0]["state"] == "ok"
     assert ("fs.write", {"path": f"{MINE}/mytorch/.sd-env-ok", "text": ""}) in agent.calls
+
+
+def test_a_refused_marker_write_does_not_fail_the_listing(envs):
+    # SLURM-91: a build path that resolves outside the user's folder (a link
+    # into /shared) makes the marker write 403; the listing must still work.
+    _, agent, c = envs
+    _build(c)
+    agent.log = b"SD_ENV_OK
+"
+    agent.refuse_write = True
+    r = c.get("/api/envs")
+    assert r.status_code == 200, r.text
+    assert r.json()["builds"][0]["state"] == "ok"
+    [mine] = [m for m in r.json()["mine"] if m["name"] == "mytorch"]
+    assert mine["ready"] is True
 
 
 def test_prebuilt_install_is_admin_only(envs):
