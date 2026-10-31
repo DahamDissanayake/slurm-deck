@@ -11,6 +11,7 @@ import base64
 import os
 import time
 from collections.abc import Iterator
+from html import unescape
 from typing import Any
 
 import httpx
@@ -192,7 +193,7 @@ def test_scenario_6_tensorboard_only_for_its_owner(alice: Api, bob: Api,
         assert mine.status_code == 200, mine.text[:300]
         theirs = bob.http.get(f"/tensorboard/{job_id}/", follow_redirects=True)
         assert theirs.status_code == 403
-        assert "not your session" in theirs.text.lower()
+        assert "this session belongs to someone else." in unescape(theirs.text).lower()
     finally:
         _cancel(alice, job_id)
 
