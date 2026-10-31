@@ -370,3 +370,32 @@ def test_check_never_shows_the_mail_secrets(ctx, capsys):
     steps.run_all(ctx)
     shown = "\n".join(ctx.planned + logged) + capsys.readouterr().out
     assert "pw-secret" not in shown and "re_secret123" not in shown
+
+
+def test_jupyter_env_is_built_from_the_spec_and_locked_down(ctx):
+    ctx.gpu.codes = {r"-x /shared/envs/jupyter/bin/jupyter": 1}
+    steps.jupyter_env(ctx)
+    cmds = ctx.gpu.cmds
+    create = "/shared/miniforge3/bin/mamba env create -y -p /shared/envs/jupyter"
+    assert any(create in c for c in cmds)
+    assert any("chown -R sd-ops:gpuadmins /shared/envs/jupyter" in c for c in cmds)
+    assert any("setfacl -R -b /shared/envs/jupyter" in c for c in cmds)
+    assert any("chmod -R go-w /shared/envs/jupyter" in c for c in cmds)
+    assert any("jupyter --version" in c for c in cmds)
+
+
+def test_jupyter_env_is_not_rebuilt_when_it_exists(ctx):
+    steps.jupyter_env(ctx)
+    assert not any("env create" in c for c in ctx.gpu.cmds)
+    assert any("chown -R sd-ops:gpuadmins" in c for c in ctx.gpu.cmds)
+
+
+def test_jupyter_env_fails_clearly_without_mamba_or_conda(ctx):
+    ctx.gpu.codes = {r"miniforge3/bin/(mamba|conda)": 1, r"bin/jupyter\]": 1}
+    with pytest.raises(steps.InstallError, match="no mamba or conda"):
+        steps.jupyter_env(ctx)
+
+
+def test_jupyter_env_comes_on_the_gpu_host_before_network():
+    names = [n for n, _ in steps.STEPS]
+    assert names.index("gpuhost_bootstrap") < names.index("jupyter_env") < names.index("network")

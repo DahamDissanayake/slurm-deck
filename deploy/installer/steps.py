@@ -316,6 +316,32 @@ def gpuhost_bootstrap(ctx: Ctx) -> None:
         raise InstallError("gpuhost_bootstrap: the helper did not answer ping")
 
 
+def jupyter_env(ctx: Ctx) -> None:
+    """On the GPU host: build the shared Jupyter env that notebook, terminal and
+    TensorBoard sessions run from, when it is missing, and lock it down."""
+    gpu, root = ctx.gpu, ctx.answers["nfs_root"].rstrip("/")
+    dest, q = f"{root}/envs/jupyter", shlex.quote
+    conda = next((c for c in (f"{root}/miniforge3/bin/mamba", f"{root}/miniforge3/bin/conda")
+                  if gpu.run(f"[ -x {q(c)} ]", check=False).returncode == 0), "")
+    if not conda and not ctx.check:
+        raise InstallError(f"jupyter_env: no mamba or conda under {root}/miniforge3 on the GPU "
+                           "host; install Miniforge there first")
+    conda = conda or f"{root}/miniforge3/bin/mamba"
+    if gpu.run(f"[ -x {q(dest + '/bin/jupyter')} ]", check=False).returncode:
+        spec = f"/tmp/sd-jupyter-env.{ctx.state.data['generated'].setdefault('jupyter_tag', secrets.token_hex(4))}.yml"
+        gpu.write(spec, (ctx.repo / "deploy/cluster/jupyter-env.yml").read_text())
+        gpu.run(f"install -d -m 0755 {q(root + '/envs')}")
+        try:
+            gpu.run(f"{q(conda)} env create -y -p {q(dest)} -f {q(spec)}")
+        finally:
+            gpu.run(f"rm -f {q(spec)}", check=False)
+    gpu.run(f"chown -R sd-ops:gpuadmins {q(dest)}")
+    gpu.run(f"setfacl -R -b {q(dest)} 2>/dev/null || true")
+    gpu.run(f"chmod -R go-w {q(dest)}")
+    if gpu.run(f"{q(dest + '/bin/jupyter')} --version", check=False).returncode and not ctx.check:
+        raise InstallError(f"jupyter_env: {dest}/bin/jupyter does not run")
+
+
 def slurm_assoc(ctx: Ctx) -> None:
     a = ctx.answers
     ctx.login.run(f"sacctmgr -i add user sd-ops account={shlex.quote(a['slurm_account'])} "
@@ -502,7 +528,8 @@ def summary(ctx: Ctx) -> None:
 
 STEPS: list[tuple[str, Callable[[Ctx], Any]]] = [
     ("preflight", preflight), ("site_values", site_values), ("accounts_login", accounts_login),
-    ("gpuhost_bootstrap", gpuhost_bootstrap), ("slurm_assoc", slurm_assoc),
+    ("gpuhost_bootstrap", gpuhost_bootstrap), ("jupyter_env", jupyter_env),
+    ("slurm_assoc", slurm_assoc),
     ("secrets", secrets_step), ("agent", agent), ("db_firewall", db_firewall),
     ("web_stack", web_stack),
     ("backups", backups), ("network", network), ("harden", harden), ("summary", summary),
