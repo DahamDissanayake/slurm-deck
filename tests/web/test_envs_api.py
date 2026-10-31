@@ -103,8 +103,7 @@ def test_a_refused_marker_write_does_not_fail_the_listing(envs):
     # into /shared) makes the marker write 403; the listing must still work.
     _, agent, c = envs
     _build(c)
-    agent.log = b"SD_ENV_OK
-"
+    agent.log = b"SD_ENV_OK\n"
     agent.refuse_write = True
     r = c.get("/api/envs")
     assert r.status_code == 200, r.text
