@@ -23,7 +23,10 @@ class EnvAgent:
         self.calls.append((verb, payload))
         return {"env.list": {"prebuilt": [], "images": [], "mine": [
                     {"name": "oldenv", "path": f"{MINE}/oldenv", "kind": "mine",
-                     "ready": False}]},
+                     "ready": False}] + ([{"name": "mytorch", "path": f"{MINE}/mytorch",
+                                           "kind": "mine", "ready": False}]
+                                         if any(c[0] == "job.submit" for c in self.calls[:-1])
+                                         else [])},
                 "job.submit": {"job_id": "700", "folder": "/shared/jobs/amasha/env"},
                 "job.list": {"jobs": [{"job_id": j, "state": "RUNNING"} for j in self.live]},
                 "env.check_imports": {"missing": self.missing},
@@ -74,7 +77,7 @@ def test_failed_build_is_listed_not_ready_with_missing(envs):
     r = c.get("/api/envs").json()
     [b] = r["builds"]
     assert (b["state"], b["missing"]) == ("failed", ["torch"])
-    [mine] = r["mine"]
+    [mine] = [m for m in r["mine"] if m["name"] == "mytorch"]
     assert (mine["ready"], mine["missing"]) == (False, ["torch"])
     assert not [v for v, _ in agent.calls if v == "fs.write"]
     c.get("/api/envs")   # the result is stored: the log isn't read again
