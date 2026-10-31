@@ -1,0 +1,14 @@
+# deploy/cluster/envs/jupyter.yml
+# description: Shared JupyterLab for notebook, terminal and TensorBoard sessions
+# The installer builds this into $NFS_ROOT/envs/jupyter (SD_JUPYTER_ENV); sessions
+# run jupyter and tensorboard from it. Owned by sd-ops:gpuadmins, never writable.
+name: jupyter
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - jupyterlab>=4.0,<5
+  - jupyter_server>=2.0,<3
+  - terminado
+  - ipykernel
+  - tensorboard
