@@ -376,7 +376,8 @@ def test_jupyter_env_is_built_from_the_spec_and_locked_down(ctx):
     ctx.gpu.codes = {r"-x /shared/envs/jupyter/bin/jupyter": 1}
     steps.jupyter_env(ctx)
     cmds = ctx.gpu.cmds
-    assert any("/shared/miniforge3/bin/mamba env create -y -p /shared/envs/jupyter" in c for c in cmds)
+    create = "/shared/miniforge3/bin/mamba env create -y -p /shared/envs/jupyter"
+    assert any(create in c for c in cmds)
     assert any("chown -R sd-ops:gpuadmins /shared/envs/jupyter" in c for c in cmds)
     assert any("setfacl -R -b /shared/envs/jupyter" in c for c in cmds)
     assert any("chmod -R go-w /shared/envs/jupyter" in c for c in cmds)
